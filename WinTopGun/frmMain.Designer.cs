@@ -1,6 +1,6 @@
 ﻿namespace WinTopGun
 {
-    partial class fmrMain
+    partial class frmMain
     {
         /// <summary>
         ///  Required designer variable.
@@ -34,6 +34,11 @@
             directorioDestinoToolStripMenuItem = new ToolStripMenuItem();
             flowLayoutPanel1 = new FlowLayoutPanel();
             btnExtract = new Button();
+            btnCancelar = new Button();
+            panelEstado = new Panel();
+            progressBarExtraccion = new ProgressBar();
+            lblEstado = new Label();
+            panelEstado.SuspendLayout();
             menuStrip1.SuspendLayout();
             flowLayoutPanel1.SuspendLayout();
             SuspendLayout();
@@ -67,9 +72,21 @@
             directorioDestinoToolStripMenuItem.Text = "Directorio destino";
             directorioDestinoToolStripMenuItem.Click += directorioDestinoToolStripMenuItem_Click;
             // 
+            // btnCancelar
+            // 
+            btnCancelar.Enabled = false;
+            btnCancelar.Location = new Point(77, 3);
+            btnCancelar.Name = "btnCancelar";
+            btnCancelar.Size = new Size(90, 57);
+            btnCancelar.TabIndex = 1;
+            btnCancelar.Text = "Cancelar";
+            btnCancelar.UseVisualStyleBackColor = true;
+            btnCancelar.Click += btnCancelar_Click;
+            // 
             // flowLayoutPanel1
             // 
             flowLayoutPanel1.Controls.Add(btnExtract);
+            flowLayoutPanel1.Controls.Add(btnCancelar);
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(0, 24);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
@@ -78,7 +95,7 @@
             // 
             // btnExtract
             // 
-            btnExtract.Image = Properties.Resources.icons8_prismáticos_50;
+            btnExtract.Image = Properties.Resources.icons8_prismaticos_50;
             btnExtract.Location = new Point(3, 3);
             btnExtract.Name = "btnExtract";
             btnExtract.Size = new Size(68, 57);
@@ -86,15 +103,47 @@
             btnExtract.UseVisualStyleBackColor = true;
             btnExtract.Click += btnExtract_Click;
             // 
-            // fmrMain
+            // panelEstado
+            // 
+            panelEstado.Controls.Add(lblEstado);
+            panelEstado.Controls.Add(progressBarExtraccion);
+            panelEstado.Dock = DockStyle.Bottom;
+            panelEstado.Location = new Point(0, 416);
+            panelEstado.Name = "panelEstado";
+            panelEstado.Size = new Size(658, 34);
+            panelEstado.TabIndex = 2;
+            // 
+            // progressBarExtraccion
+            // 
+            progressBarExtraccion.Dock = DockStyle.Bottom;
+            progressBarExtraccion.Location = new Point(0, 28);
+            progressBarExtraccion.Name = "progressBarExtraccion";
+            progressBarExtraccion.Size = new Size(658, 6);
+            progressBarExtraccion.Style = ProgressBarStyle.Continuous;
+            progressBarExtraccion.TabIndex = 0;
+            // 
+            // lblEstado
+            // 
+            lblEstado.AutoEllipsis = true;
+            lblEstado.Dock = DockStyle.Fill;
+            lblEstado.Location = new Point(0, 0);
+            lblEstado.Name = "lblEstado";
+            lblEstado.Padding = new Padding(3, 0, 3, 0);
+            lblEstado.Size = new Size(658, 28);
+            lblEstado.TabIndex = 1;
+            lblEstado.Text = "Listo.";
+            lblEstado.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // frmMain
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(658, 450);
             Controls.Add(flowLayoutPanel1);
+            Controls.Add(panelEstado);
             Controls.Add(menuStrip1);
             MainMenuStrip = menuStrip1;
-            Name = "fmrMain";
+            Name = "frmMain";
             Text = "Win Top Gun";
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();
@@ -111,5 +160,9 @@
         private ToolStripMenuItem directorioDestinoToolStripMenuItem;
         private FlowLayoutPanel flowLayoutPanel1;
         private Button btnExtract;
+        private Button btnCancelar;
+        private Panel panelEstado;
+        private ProgressBar progressBarExtraccion;
+        private Label lblEstado;
     }
 }

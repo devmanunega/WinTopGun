@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="WinTopGun/WinTopGun.csproj" />
+  <Project Path="WinTopGun/Tests/WinTopGun.Tests/WinTopGun.Tests.csproj" />
 </Solution>

@@ -1,5 +1,7 @@
 # Plan de Trabajo — Optimización de WinTopGun
 
+> **ESTADO: ✅ EJECUTADO** (rama `Refactorización`). Fases 0–4 completadas: arquitectura en capas, DI, UI asíncrona con cancelación, robustez de Selenium y 20 pruebas unitarias en verde (`dotnet test`). La Fase 5 queda como backlog opcional.
+
 > Proyecto: WinTopGun (WinForms, .NET 10, Selenium WebDriver)
 > Objetivo: evolucionar el prototipo actual hacia una aplicación mantenible, testeable y robusta aplicando principios de ingeniería de software (SOLID, separación de responsabilidades, DRY, KISS).
 
