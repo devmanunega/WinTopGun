@@ -25,6 +25,7 @@ namespace WinTopGun.UI.UserControls
             if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
             {
                 Properties.Settings.Default.RutaDatosExtraidos = folderBrowserDialog.SelectedPath;
+                Properties.Settings.Default.Save();
 
                 MessageBox.Show($"{Properties.Settings.Default.RutaDatosExtraidos} - Directorio de destino actualizado correctamente.", "Información", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
