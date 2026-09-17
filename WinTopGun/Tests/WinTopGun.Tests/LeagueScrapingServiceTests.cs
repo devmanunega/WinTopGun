@@ -21,7 +21,12 @@ public sealed class LeagueScrapingServiceTests
     {
         factory = new FakeDriverFactory(driver);
         exporter = new RecordingTableExporter();
-        var options = new ScrapingOptions { WaitTimeoutSeconds = 1 };
+        var options = new ScrapingOptions
+        {
+            WaitTimeoutSeconds = 1,
+            HumanPauseMinMilliseconds = 0,
+            HumanPauseMaxMilliseconds = 0,
+        };
 
         return new LeagueScrapingService(
             factory,
@@ -266,5 +271,35 @@ public sealed class LeagueScrapingServiceTests
         // Act + Assert
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => service.ExtractPlayerTablesAsync(OutputDirectory, cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task Jugadores_PausaHumana_SeEjecutaTrasCadaCargaCompleta()
+    {
+        // Arrange: pausa reducida (100-150 ms) pero verificable; 2 ligas × 2 enlaces pares = 4 pausas.
+        var driver = CreateDriverForPlayers();
+        var factory = new FakeDriverFactory(driver);
+        var exporter = new RecordingTableExporter();
+        var options = new ScrapingOptions
+        {
+            WaitTimeoutSeconds = 1,
+            HumanPauseMinMilliseconds = 100,
+            HumanPauseMaxMilliseconds = 150,
+        };
+        var service = new LeagueScrapingService(
+            factory,
+            exporter,
+            options,
+            NullLogger<LeagueScrapingService>.Instance);
+        var cronometro = System.Diagnostics.Stopwatch.StartNew();
+
+        // Act
+        ScrapingResult resultado = await service.ExtractPlayerTablesAsync(OutputDirectory);
+        cronometro.Stop();
+
+        // Assert: 4 pausas de al menos 100 ms cada una.
+        Assert.True(resultado.Success);
+        Assert.True(cronometro.ElapsedMilliseconds >= 400,
+            $"Tiempo transcurrido insuficiente para 4 pausas: {cronometro.ElapsedMilliseconds} ms");
     }
 }

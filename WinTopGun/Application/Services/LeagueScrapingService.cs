@@ -232,6 +232,10 @@ public sealed class LeagueScrapingService : IScrapingService
             driver.Navigate().GoToUrl(url);
             WaitForPageComplete(driver, wait);
 
+            // Pausa aleatoria para simular la navegación de una persona antes
+            // de proceder con la extracción de las tablas.
+            PauseToSimulateHumanNavigation(cancellationToken);
+
             try
             {
                 wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
@@ -265,6 +269,36 @@ public sealed class LeagueScrapingService : IScrapingService
     private static void WaitForPageComplete(IWebDriver driver, WebDriverWait wait)
     {
         wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState")?.ToString() == "complete");
+    }
+
+    /// <summary>
+    /// Pausa un intervalo aleatorio (entre <see cref="ScrapingOptions.HumanPauseMinMilliseconds"/> y
+    /// <see cref="ScrapingOptions.HumanPauseMaxMilliseconds"/>) tras la carga completa de una página,
+    /// para simular la navegación de una persona. La espera se realiza en fragmentos para
+    /// responder con rapidez a una solicitud de cancelación.
+    /// </summary>
+    private void PauseToSimulateHumanNavigation(CancellationToken cancellationToken)
+    {
+        int min = _options.HumanPauseMinMilliseconds;
+        int max = _options.HumanPauseMaxMilliseconds;
+
+        if (max <= 0 || min > max)
+        {
+            return;
+        }
+
+        int delayMs = Random.Shared.Next(min, max + 1);
+        _logger.LogInformation("Pausa de {Seconds:N1} s para simular navegación humana", delayMs / 1000.0);
+
+        const int SliceMs = 200;
+        int remaining = delayMs;
+        while (remaining > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int slice = Math.Min(SliceMs, remaining);
+            Thread.Sleep(slice);
+            remaining -= slice;
+        }
     }
 
     /// <summary>

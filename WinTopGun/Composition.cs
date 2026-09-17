@@ -45,6 +45,8 @@ public static class Composition
         WaitTimeoutSeconds = ReadIntSetting(ScrapingOptions.WaitTimeoutKey, ScrapingOptions.DefaultWaitTimeoutSeconds),
         ChromeDebuggerAddress = ConfigurationManager.AppSettings[ScrapingOptions.DebuggerAddressKey]
             ?? ScrapingOptions.DefaultDebuggerAddress,
+        HumanPauseMinMilliseconds = ReadIntSetting(ScrapingOptions.HumanPauseMinKey, ScrapingOptions.DefaultHumanPauseMinMs),
+        HumanPauseMaxMilliseconds = ReadIntSetting(ScrapingOptions.HumanPauseMaxKey, ScrapingOptions.DefaultHumanPauseMaxMs),
     };
 
     private static int ReadIntSetting(string key, int fallback) =>
