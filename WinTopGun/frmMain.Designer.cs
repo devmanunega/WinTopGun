@@ -1,6 +1,6 @@
 ﻿namespace WinTopGun
 {
-    partial class fmrMain
+    partial class frmMain
     {
         /// <summary>
         ///  Required designer variable.
@@ -78,7 +78,7 @@
             // 
             // btnExtract
             // 
-            btnExtract.Image = Properties.Resources.icons8_prismáticos_50;
+            btnExtract.Image = Properties.Resources.icons8_prismaticos_50;
             btnExtract.Location = new Point(3, 3);
             btnExtract.Name = "btnExtract";
             btnExtract.Size = new Size(68, 57);
@@ -86,7 +86,7 @@
             btnExtract.UseVisualStyleBackColor = true;
             btnExtract.Click += btnExtract_Click;
             // 
-            // fmrMain
+            // frmMain
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -94,7 +94,7 @@
             Controls.Add(flowLayoutPanel1);
             Controls.Add(menuStrip1);
             MainMenuStrip = menuStrip1;
-            Name = "fmrMain";
+            Name = "frmMain";
             Text = "Win Top Gun";
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();

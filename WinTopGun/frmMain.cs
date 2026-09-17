@@ -7,9 +7,9 @@ using WinTopGun.UI.Forms.Opciones;
 
 namespace WinTopGun
 {
-    public partial class fmrMain : Form
+    public partial class frmMain : Form
     {
-        public fmrMain()
+        public frmMain()
         {
             InitializeComponent();
         }

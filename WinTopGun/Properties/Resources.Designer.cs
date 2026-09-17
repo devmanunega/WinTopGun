@@ -73,9 +73,9 @@ namespace WinTopGun.Properties {
         /// <summary>
         ///   Busca un recurso adaptado de tipo System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap icons8_prismáticos_50 {
+        internal static System.Drawing.Bitmap icons8_prismaticos_50 {
             get {
-                object obj = ResourceManager.GetObject("icons8-prismáticos-50", resourceCulture);
+                object obj = ResourceManager.GetObject("icons8-prismaticos-50", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }

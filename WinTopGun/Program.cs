@@ -11,7 +11,7 @@ namespace WinTopGun
             // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
-            Application.Run(new fmrMain());
+            Application.Run(new frmMain());
         }
     }
 }
