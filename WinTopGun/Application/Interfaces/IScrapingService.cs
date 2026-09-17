@@ -18,4 +18,18 @@ public interface IScrapingService
         string outputDirectory,
         IProgress<ScrapingProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Recorre las ligas, abre únicamente los enlaces en posición par que cumplen
+    /// el selector de enlaces de jugadores, espera la carga completa de cada página
+    /// y extrae sus tablas con <c>id</c>.
+    /// </summary>
+    /// <param name="outputDirectory">Directorio destino de los archivos generados.</param>
+    /// <param name="progress">Receptor opcional de reportes de avance.</param>
+    /// <param name="cancellationToken">Token para cancelar la operación.</param>
+    /// <returns>Resultado consolidado de la ejecución.</returns>
+    Task<ScrapingResult> ExtractPlayerTablesAsync(
+        string outputDirectory,
+        IProgress<ScrapingProgress>? progress = null,
+        CancellationToken cancellationToken = default);
 }

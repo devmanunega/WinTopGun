@@ -34,7 +34,28 @@ public partial class frmMain : Form
         frmConfiguracion.ShowDialog(this);
     }
 
-    private async void btnExtract_Click(object sender, EventArgs e)
+    /// <summary>Proceso de equipos: recorre las ligas y extrae sus tablas con <c>id</c>.</summary>
+    private async void btnExtract_Click(object sender, EventArgs e) =>
+        await EjecutarExtraccionAsync(
+            (servicio, directorio, progreso, token) =>
+                servicio.ExtractLeagueTablesAsync(directorio, progreso, token));
+
+    /// <summary>
+    /// Proceso de jugadores: recorre las ligas, abre solo los enlaces en posición
+    /// par del selector de jugadores y extrae las tablas con <c>id</c> de cada página.
+    /// </summary>
+    private async void btnExtractPlayers_Click(object sender, EventArgs e) =>
+        await EjecutarExtraccionAsync(
+            (servicio, directorio, progreso, token) =>
+                servicio.ExtractPlayerTablesAsync(directorio, progreso, token));
+
+    /// <summary>
+    /// Orquestación compartida por ambos procesos de extracción: valida el directorio
+    /// destino, ejecuta la operación con progreso y cancelación, y muestra el resultado.
+    /// </summary>
+    /// <param name="operacion">Operación de extracción a ejecutar sobre el servicio.</param>
+    private async Task EjecutarExtraccionAsync(
+        Func<IScrapingService, string, IProgress<ScrapingProgress>, CancellationToken, Task<ScrapingResult>> operacion)
     {
         string outputDirectory = _settingsProvider.OutputDirectory;
 
@@ -48,7 +69,7 @@ public partial class frmMain : Form
 
             if (respuesta == DialogResult.Yes)
             {
-                directorioDestinoToolStripMenuItem_Click(sender, e);
+                directorioDestinoToolStripMenuItem_Click(this, EventArgs.Empty);
             }
 
             return;
@@ -66,8 +87,7 @@ public partial class frmMain : Form
 
         try
         {
-            ScrapingResult resultado = await _scrapingService
-                .ExtractLeagueTablesAsync(outputDirectory, progress, _cancelacion.Token)
+            ScrapingResult resultado = await operacion(_scrapingService, outputDirectory, progress, _cancelacion.Token)
                 .ConfigureAwait(true);
 
             MostrarResultado(resultado);
@@ -129,6 +149,7 @@ public partial class frmMain : Form
     private void SetOperacionEnCurso(bool enCurso)
     {
         btnExtract.Enabled = !enCurso;
+        btnExtractPlayers.Enabled = !enCurso;
         btnCancelar.Enabled = enCurso;
 
         if (!enCurso)

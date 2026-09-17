@@ -6,7 +6,11 @@ namespace WinTopGun.Tests.Fakes;
 /// <summary>
 /// Implementación mínima de <see cref="IWebElement"/> para pruebas unitarias.
 /// </summary>
-internal sealed class FakeWebElement(string text, string? id = null, string? innerText = null) : IWebElement
+internal sealed class FakeWebElement(
+    string text,
+    string? id = null,
+    string? innerText = null,
+    string? href = null) : IWebElement
 {
     public int Clicks { get; private set; }
 
@@ -32,8 +36,12 @@ internal sealed class FakeWebElement(string text, string? id = null, string? inn
 
     public void Clear() => throw new NotImplementedException();
 
-    public string GetAttribute(string attributeName) =>
-        attributeName == "id" ? (id ?? throw new NoSuchElementException()) : throw new NotImplementedException();
+    public string GetAttribute(string attributeName) => attributeName switch
+    {
+        "id" when id is not null => id,
+        "href" when href is not null => href,
+        _ => throw new NoSuchElementException($"Atributo '{attributeName}' no disponible."),
+    };
 
     public string GetDomProperty(string propertyName) =>
         propertyName == "innerText" ? (innerText ?? throw new NotImplementedException()) : throw new NotImplementedException();

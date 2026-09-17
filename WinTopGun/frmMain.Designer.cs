@@ -1,4 +1,4 @@
-﻿namespace WinTopGun
+namespace WinTopGun
 {
     partial class frmMain
     {
@@ -36,11 +36,12 @@
             btnExtract = new Button();
             btnCancelar = new Button();
             panelEstado = new Panel();
-            progressBarExtraccion = new ProgressBar();
             lblEstado = new Label();
-            panelEstado.SuspendLayout();
+            progressBarExtraccion = new ProgressBar();
+            btnExtractPlayers = new Button();
             menuStrip1.SuspendLayout();
             flowLayoutPanel1.SuspendLayout();
+            panelEstado.SuspendLayout();
             SuspendLayout();
             // 
             // menuStrip1
@@ -72,25 +73,15 @@
             directorioDestinoToolStripMenuItem.Text = "Directorio destino";
             directorioDestinoToolStripMenuItem.Click += directorioDestinoToolStripMenuItem_Click;
             // 
-            // btnCancelar
-            // 
-            btnCancelar.Enabled = false;
-            btnCancelar.Location = new Point(77, 3);
-            btnCancelar.Name = "btnCancelar";
-            btnCancelar.Size = new Size(90, 57);
-            btnCancelar.TabIndex = 1;
-            btnCancelar.Text = "Cancelar";
-            btnCancelar.UseVisualStyleBackColor = true;
-            btnCancelar.Click += btnCancelar_Click;
-            // 
             // flowLayoutPanel1
             // 
             flowLayoutPanel1.Controls.Add(btnExtract);
             flowLayoutPanel1.Controls.Add(btnCancelar);
+            flowLayoutPanel1.Controls.Add(btnExtractPlayers);
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(0, 24);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
-            flowLayoutPanel1.Size = new Size(658, 426);
+            flowLayoutPanel1.Size = new Size(658, 392);
             flowLayoutPanel1.TabIndex = 1;
             // 
             // btnExtract
@@ -98,10 +89,23 @@
             btnExtract.Image = Properties.Resources.icons8_prismaticos_50;
             btnExtract.Location = new Point(3, 3);
             btnExtract.Name = "btnExtract";
-            btnExtract.Size = new Size(68, 57);
+            btnExtract.Size = new Size(118, 57);
             btnExtract.TabIndex = 0;
+            btnExtract.Text = "Equipos";
+            btnExtract.TextAlign = ContentAlignment.MiddleRight;
+            btnExtract.TextImageRelation = TextImageRelation.TextBeforeImage;
             btnExtract.UseVisualStyleBackColor = true;
             btnExtract.Click += btnExtract_Click;
+            // btnCancelar
+            // 
+            btnCancelar.Enabled = false;
+            btnCancelar.Location = new Point(127, 3);
+            btnCancelar.Name = "btnCancelar";
+            btnCancelar.Size = new Size(90, 57);
+            btnCancelar.TabIndex = 1;
+            btnCancelar.Text = "Cancelar";
+            btnCancelar.UseVisualStyleBackColor = true;
+            btnCancelar.Click += btnCancelar_Click;
             // 
             // panelEstado
             // 
@@ -112,15 +116,6 @@
             panelEstado.Name = "panelEstado";
             panelEstado.Size = new Size(658, 34);
             panelEstado.TabIndex = 2;
-            // 
-            // progressBarExtraccion
-            // 
-            progressBarExtraccion.Dock = DockStyle.Bottom;
-            progressBarExtraccion.Location = new Point(0, 28);
-            progressBarExtraccion.Name = "progressBarExtraccion";
-            progressBarExtraccion.Size = new Size(658, 6);
-            progressBarExtraccion.Style = ProgressBarStyle.Continuous;
-            progressBarExtraccion.TabIndex = 0;
             // 
             // lblEstado
             // 
@@ -133,6 +128,28 @@
             lblEstado.TabIndex = 1;
             lblEstado.Text = "Listo.";
             lblEstado.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // progressBarExtraccion
+            // 
+            progressBarExtraccion.Dock = DockStyle.Bottom;
+            progressBarExtraccion.Location = new Point(0, 28);
+            progressBarExtraccion.Name = "progressBarExtraccion";
+            progressBarExtraccion.Size = new Size(658, 6);
+            progressBarExtraccion.Style = ProgressBarStyle.Continuous;
+            progressBarExtraccion.TabIndex = 0;
+            // 
+            // btnExtractPlayers
+            // 
+            btnExtractPlayers.Image = Properties.Resources.icons8_prismaticos_50;
+            btnExtractPlayers.Location = new Point(223, 3);
+            btnExtractPlayers.Name = "btnExtractPlayers";
+            btnExtractPlayers.Size = new Size(118, 57);
+            btnExtractPlayers.TabIndex = 2;
+            btnExtractPlayers.Text = "Jugadores";
+            btnExtractPlayers.TextAlign = ContentAlignment.MiddleRight;
+            btnExtractPlayers.TextImageRelation = TextImageRelation.TextBeforeImage;
+            btnExtractPlayers.UseVisualStyleBackColor = true;
+            btnExtractPlayers.Click += btnExtractPlayers_Click;
             // 
             // frmMain
             // 
@@ -148,6 +165,7 @@
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();
             flowLayoutPanel1.ResumeLayout(false);
+            panelEstado.ResumeLayout(false);
             ResumeLayout(false);
             PerformLayout();
         }
@@ -164,5 +182,6 @@
         private Panel panelEstado;
         private ProgressBar progressBarExtraccion;
         private Label lblEstado;
+        private Button btnExtractPlayers;
     }
 }

@@ -44,4 +44,9 @@ public partial class uCtlFichaOpciones : UserControl
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
     }
+
+    private void uCtlFichaOpciones_Load(object sender, EventArgs e)
+    {
+
+    }
 }

@@ -5,17 +5,21 @@ namespace WinTopGun.Tests.Fakes;
 
 /// <summary>
 /// Implementación mínima de <see cref="IWebDriver"/> que simula una página principal
-/// con N ligas y páginas de liga con M tablas con <c>id</c>. Permite ejercitar el
-/// algoritmo de <c>LeagueScrapingService</c> sin un navegador real.
+/// con N ligas, páginas de liga con enlaces de jugadores y páginas con M tablas con
+/// <c>id</c>. Permite ejercitar el algoritmo de <c>LeagueScrapingService</c> sin un
+/// navegador real.
 /// </summary>
-internal sealed class FakeWebDriver : IWebDriver
+internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
 {
     private readonly Dictionary<string, IWebElement> _tablesById = [];
 
     /// <summary>Enlaces de ligas visibles en la página principal.</summary>
     public List<string> LeagueNames { get; set; } = ["Liga A", "Liga B"];
 
-    /// <summary>Tablas (id + contenido) visibles en la página de liga.</summary>
+    /// <summary>Enlaces de jugadores (href) visibles en la página de liga, en orden de aparición.</summary>
+    public List<string> PlayerLinkHrefs { get; set; } = [];
+
+    /// <summary>Tablas (id + contenido) visibles en la página de liga o de jugador.</summary>
     public List<(string Id, string Content)> Tables { get; set; } = [];
 
     /// <summary>Ids de tablas que "desaparecen" del DOM (producen NoSuchElementException).</summary>
@@ -23,6 +27,12 @@ internal sealed class FakeWebDriver : IWebDriver
 
     /// <summary>Indica si las tablas son visibles; falso para simular un timeout.</summary>
     public bool TablesVisible { get; set; } = true;
+
+    /// <summary>Estado devuelto por <c>document.readyState</c>.</summary>
+    public string ReadyState { get; set; } = "complete";
+
+    /// <summary>URLs visitadas mediante GoToUrl, en orden.</summary>
+    public List<string> VisitedUrls { get; } = [];
 
     /// <summary>Cantidad de veces que se navegó hacia atrás.</summary>
     public int NavigationsBack { get; private set; }
@@ -42,13 +52,21 @@ internal sealed class FakeWebDriver : IWebDriver
 
     public IOptions Manage() => throw new NotImplementedException();
 
-    public INavigation Navigate() => new FakeNavigation(() => NavigationsBack++);
+    public INavigation Navigate() => new FakeNavigation(RecordGoToUrl, () => NavigationsBack++);
 
     public ITargetLocator SwitchTo() => throw new NotImplementedException();
 
     public void Close() { }
 
     public void Quit() => QuitCalled = true;
+
+    public object? ExecuteScript(string script, params object?[]? args) =>
+        script.Contains("readyState") ? ReadyState : null;
+
+    public object? ExecuteScript(PinnedScript script, params object?[]? args) =>
+        ExecuteScript(script.Source, args);
+
+    public object? ExecuteAsyncScript(string script, params object?[]? args) => null;
 
     public IWebElement FindElement(By by)
     {
@@ -58,18 +76,30 @@ internal sealed class FakeWebDriver : IWebDriver
 
     public ReadOnlyCollection<IWebElement> FindElements(By by)
     {
-        if (by.Mechanism == "css selector" && by.Criteria == "table[id]")
+        if (by.Mechanism != "css selector")
+        {
+            return [];
+        }
+
+        // Enlaces de jugadores en la página de liga.
+        // (se comprueba antes que el selector por id: también empieza por '#')
+        if (by.Criteria.Contains("section_heading_text"))
+        {
+            return [.. PlayerLinkHrefs.Select(href => (IWebElement)new FakeWebElement($"enlace {href}", href: href))];
+        }
+
+        if (by.Criteria == "table[id]")
         {
             return TablesVisible ? [.. ListTables()] : [];
         }
 
-        if (by.Mechanism == "css selector" && by.Criteria.Contains("gridtitle"))
+        if (by.Criteria.Contains("gridtitle"))
         {
             return [.. LeagueNames.Select(name => (IWebElement)new FakeWebElement(name))];
         }
 
         // En Selenium 4.49, By.Id se materializa como selector CSS "#id".
-        if (by.Mechanism == "css selector" && by.Criteria is ['#', .. var tableId])
+        if (by.Criteria is ['#', .. var tableId])
         {
             return _tablesById.TryGetValue(tableId, out var element)
                 ? [element]
@@ -97,19 +127,21 @@ internal sealed class FakeWebDriver : IWebDriver
     private IEnumerable<IWebElement> ListTables() =>
         Tables.Select(t => (IWebElement)new FakeWebElement($"tabla {t.Id}", t.Id));
 
+    private void RecordGoToUrl(string url) => VisitedUrls.Add(url);
+
     public void Dispose() { }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private sealed class FakeNavigation(Action onBack) : INavigation
+    private sealed class FakeNavigation(Action<string> onGoToUrl, Action onBack) : INavigation
     {
         public void Back() => onBack();
 
         public void Forward() { }
 
-        public void GoToUrl(string url) { }
+        public void GoToUrl(string url) => onGoToUrl(url);
 
-        public void GoToUrl(Uri url) { }
+        public void GoToUrl(Uri url) => onGoToUrl(url.ToString());
 
         public void Refresh() { }
 
@@ -117,9 +149,9 @@ internal sealed class FakeWebDriver : IWebDriver
 
         public Task ForwardAsync() => Task.CompletedTask;
 
-        public Task GoToUrlAsync(string url) => Task.CompletedTask;
+        public Task GoToUrlAsync(string url) { onGoToUrl(url); return Task.CompletedTask; }
 
-        public Task GoToUrlAsync(Uri url) => Task.CompletedTask;
+        public Task GoToUrlAsync(Uri url) { onGoToUrl(url.ToString()); return Task.CompletedTask; }
 
         public Task RefreshAsync() => Task.CompletedTask;
     }

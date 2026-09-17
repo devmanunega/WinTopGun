@@ -23,4 +23,13 @@ public sealed record ScrapingProgress(
     /// <summary>Crea un reporte de avance a nivel de tabla.</summary>
     public static ScrapingProgress ForTable(int currentLeague, int totalLeagues, int currentTable, int totalTables) =>
         new(currentLeague, totalLeagues, currentTable, totalTables, $"Liga {currentLeague}/{totalLeagues} — Tabla {currentTable}/{totalTables}");
+
+    /// <summary>Crea un reporte de avance a nivel de enlace de jugador.</summary>
+    public static ScrapingProgress ForPlayerLink(
+        int currentLeague,
+        int totalLeagues,
+        int currentLink,
+        int totalLinks,
+        string linkText) =>
+        new(currentLeague, totalLeagues, currentLink, totalLinks, $"Liga {currentLeague}/{totalLeagues} — Enlace {currentLink}/{totalLinks}: {linkText}");
 }

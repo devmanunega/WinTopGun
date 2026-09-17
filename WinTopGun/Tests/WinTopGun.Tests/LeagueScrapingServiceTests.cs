@@ -160,4 +160,111 @@ public sealed class LeagueScrapingServiceTests
         Assert.True(driver.QuitCalled);
         Assert.Single(resultado.Errors);
     }
+
+    // ------------------------------------------------------------------
+    // Flujo de jugadores (btnExtractPlayers)
+    // ------------------------------------------------------------------
+
+    private static FakeWebDriver CreateDriverForPlayers(int leagues = 2, int playerLinks = 4)
+    {
+        var driver = new FakeWebDriver
+        {
+            LeagueNames = [.. Enumerable.Range(1, leagues).Select(i => $"Liga {i}")],
+            PlayerLinkHrefs = [.. Enumerable.Range(1, playerLinks).Select(i => $"https://sitio-de-prueba.test/jugador/{i}")],
+            Url = "https://sitio-de-prueba.test/liga/primeraliga",
+            Tables = [("tabla_jugadores", "contenido jugadores")],
+        };
+        driver.PrepareTables();
+        return driver;
+    }
+
+    [Fact]
+    public async Task Jugadores_SoloAbreEnlacesParesYExportaTablas()
+    {
+        // Arrange: 2 ligas × 4 enlaces → solo se abren el 2.º y el 4.º
+        var driver = CreateDriverForPlayers();
+        var service = CreateService(driver, out var factory, out var exporter);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractPlayerTablesAsync(OutputDirectory);
+
+        // Assert
+        Assert.True(resultado.Success);
+        Assert.Equal(2, resultado.LeaguesProcessed);
+        Assert.Equal(4, resultado.TablesExported); // 2 enlaces pares × 2 ligas × 1 tabla
+        Assert.Equal(4, exporter.Exports.Count);
+
+        // Solo se navegaron los enlaces en posición par (2.º y 4.º), dos veces (una por liga).
+        Assert.All(driver.VisitedUrls, url => Assert.True(
+            url.EndsWith("/jugador/2") || url.EndsWith("/jugador/4"),
+            $"Se navegó a un enlace impar: {url}"));
+        Assert.Equal(2, driver.VisitedUrls.Count(url => url.EndsWith("/jugador/2", StringComparison.Ordinal)));
+        Assert.Equal(2, driver.VisitedUrls.Count(url => url.EndsWith("/jugador/4", StringComparison.Ordinal)));
+        Assert.DoesNotContain(driver.VisitedUrls, url => url.EndsWith("/jugador/1"));
+        Assert.DoesNotContain(driver.VisitedUrls, url => url.EndsWith("/jugador/3"));
+        Assert.True(driver.QuitCalled);
+    }
+
+    [Fact]
+    public async Task Jugadores_Progreso_ReportaEnlacesYTablas()
+    {
+        // Arrange
+        var driver = CreateDriverForPlayers();
+        var service = CreateService(driver, out _, out _);
+        var progress = new RecordingProgress();
+
+        // Act
+        await service.ExtractPlayerTablesAsync(OutputDirectory, progress);
+
+        // Assert
+        Assert.Contains(progress.Reports, r => r is { CurrentLeague: 1, TotalLeagues: 2, CurrentTable: 0 });
+        Assert.Contains(progress.Reports, r => r.Message.Contains("Enlace 1/2"));
+        Assert.Contains(progress.Reports, r => r.Message.Contains("Enlace 2/2"));
+        Assert.Contains(progress.Reports, r => r is { CurrentTable: 1, TotalTables: 1 });
+    }
+
+    [Fact]
+    public async Task Jugadores_TimeoutSinTablas_RegistraErrorYContinua()
+    {
+        // Arrange
+        var driver = CreateDriverForPlayers();
+        driver.TablesVisible = false;
+        var service = CreateService(driver, out _, out var exporter);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractPlayerTablesAsync(OutputDirectory);
+
+        // Assert
+        Assert.False(resultado.Success);
+        Assert.Equal(0, resultado.TablesExported);
+        Assert.Empty(exporter.Exports);
+        Assert.Equal(4, resultado.Errors.Count); // 2 ligas × 2 enlaces pares
+        Assert.True(driver.QuitCalled);
+    }
+
+    [Fact]
+    public async Task Jugadores_DirectorioSalidaVacio_LanzaArgumentException()
+    {
+        // Arrange
+        var driver = CreateDriverForPlayers();
+        var service = CreateService(driver, out _, out _);
+
+        // Act + Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => service.ExtractPlayerTablesAsync(string.Empty));
+    }
+
+    [Fact]
+    public async Task Jugadores_TokenCanceladoAntesDeIniciar_LanzaOperacionCancelada()
+    {
+        // Arrange
+        var driver = CreateDriverForPlayers();
+        var service = CreateService(driver, out _, out _);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        // Act + Assert
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => service.ExtractPlayerTablesAsync(OutputDirectory, cancellationToken: cts.Token));
+    }
 }

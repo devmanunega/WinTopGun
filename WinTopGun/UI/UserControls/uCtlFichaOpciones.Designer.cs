@@ -1,4 +1,4 @@
-﻿namespace WinTopGun.UI.UserControls
+namespace WinTopGun.UI.UserControls
 {
     partial class uCtlFichaOpciones
     {
@@ -91,6 +91,7 @@
             Controls.Add(tableLayoutPanel1);
             Name = "uCtlFichaOpciones";
             Size = new Size(172, 150);
+            Load += uCtlFichaOpciones_Load;
             tableLayoutPanel1.ResumeLayout(false);
             tableLayoutPanel1.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)picBoxDirectorio).EndInit();
