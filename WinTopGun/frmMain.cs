@@ -1,131 +1,140 @@
-using OpenQA.Selenium;
-using OpenQA.Selenium.Support.UI;
-using System.Collections.ObjectModel;
-using System.Text;
-using WinTopGun.Selenium;
+using Microsoft.Extensions.DependencyInjection;
+using WinTopGun.Application.Interfaces;
+using WinTopGun.Domain.Models;
 using WinTopGun.UI.Forms.Opciones;
 
-namespace WinTopGun
+namespace WinTopGun;
+
+/// <summary>
+/// Formulario principal. Solo orquesta la interacción del usuario con los
+/// servicios de aplicación: la lógica de extracción vive en <see cref="LeagueScrapingService"/>.
+/// </summary>
+public partial class frmMain : Form
 {
-    public partial class frmMain : Form
+    private readonly IScrapingService _scrapingService;
+    private readonly ISettingsProvider _settingsProvider;
+    private CancellationTokenSource? _cancelacion;
+
+    /// <summary>Constructor usado por el diseñador y por <see cref="Program"/>.</summary>
+    public frmMain() : this(Composition.Services)
     {
-        public frmMain()
+    }
+
+    /// <summary>Constructor con inyección de dependencias (útil para pruebas).</summary>
+    public frmMain(IServiceProvider services)
+    {
+        InitializeComponent();
+        _scrapingService = services.GetRequiredService<IScrapingService>();
+        _settingsProvider = services.GetRequiredService<ISettingsProvider>();
+    }
+
+    private void directorioDestinoToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        using var frmConfiguracion = new frmConfiguracion(_settingsProvider);
+        frmConfiguracion.ShowDialog(this);
+    }
+
+    private async void btnExtract_Click(object sender, EventArgs e)
+    {
+        string outputDirectory = _settingsProvider.OutputDirectory;
+
+        if (string.IsNullOrWhiteSpace(outputDirectory))
         {
-            InitializeComponent();
+            var respuesta = MessageBox.Show(
+                "No se ha configurado el directorio de destino. ¿Desea configurarlo ahora?",
+                "Configuración requerida",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (respuesta == DialogResult.Yes)
+            {
+                directorioDestinoToolStripMenuItem_Click(sender, e);
+            }
+
+            return;
         }
 
-        private void directorioDestinoToolStripMenuItem_Click(object sender, EventArgs e)
+        _cancelacion = new CancellationTokenSource();
+        SetOperacionEnCurso(true);
+
+        var progress = new Progress<ScrapingProgress>(p =>
         {
-            frmConfiguracion frmConfiguracion = new frmConfiguracion();
-            frmConfiguracion.ShowDialog();
+            lblEstado.Text = p.Message;
+            progressBarExtraccion.Maximum = Math.Max(p.TotalLeagues, 1);
+            progressBarExtraccion.Value = Math.Clamp(p.CurrentLeague, 0, progressBarExtraccion.Maximum);
+        });
+
+        try
+        {
+            ScrapingResult resultado = await _scrapingService
+                .ExtractLeagueTablesAsync(outputDirectory, progress, _cancelacion.Token)
+                .ConfigureAwait(true);
+
+            MostrarResultado(resultado);
         }
-
-        private void btnExtract_Click(object sender, EventArgs e)
+        catch (OperationCanceledException)
         {
-            IWebDriver driver = SeleniumServices.CreateChromeDriver();
-            string directorioSalida = Properties.Settings.Default.RutaDatosExtraidos;
+            MessageBox.Show("La extracción fue cancelada.", "Información",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Ocurrió un error inesperado durante la extracción:{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            SetOperacionEnCurso(false);
+            _cancelacion?.Dispose();
+            _cancelacion = null;
+        }
+    }
 
-            try
-            {
-                // Las 5 ligas principales de Europa
-                By locatorEnlaces = By.CssSelector("#div_league_summary .data_grid_box .gridtitle a");
+    private void btnCancelar_Click(object sender, EventArgs e)
+    {
+        _cancelacion?.Cancel();
+        lblEstado.Text = "Cancelando...";
+    }
 
-                // Crear wait reusable
-                WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
+    private void MostrarResultado(ScrapingResult resultado)
+    {
+        if (resultado.WasCancelled)
+        {
+            MessageBox.Show("La extracción fue cancelada.", "Información",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        else if (resultado.Success)
+        {
+            MessageBox.Show(
+                $"Extracción finalizada: {resultado.TablesExported} tablas exportadas de {resultado.LeaguesProcessed} ligas.",
+                "Proceso completado",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        else
+        {
+            string detalle = string.Join(Environment.NewLine, resultado.Errors.Take(5));
+            MessageBox.Show(
+                $"Extracción finalizada con {resultado.Errors.Count} incidencia(s).{Environment.NewLine}" +
+                $"Se exportaron {resultado.TablesExported} tablas.{Environment.NewLine}{Environment.NewLine}{detalle}",
+                "Proceso completado con advertencias",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
 
-                // Esperar que carguen los enlaces iniciales
-                wait.Until(d => d.FindElements(locatorEnlaces).Count > 0);
-                int totalEnlaces = driver.FindElements(locatorEnlaces).Count;
+    private void SetOperacionEnCurso(bool enCurso)
+    {
+        btnExtract.Enabled = !enCurso;
+        btnCancelar.Enabled = enCurso;
 
-                for (int i = 0; i < totalEnlaces; i++)
-                {
-                    // Re-localizar los enlaces en cada iteración
-                    IList<IWebElement> enlaces = driver.FindElements(locatorEnlaces);
-                    IWebElement enlaceActual = enlaces[i];
-
-                    Console.WriteLine($"\n[Liga {i + 1}/{totalEnlaces}] Abriendo enlace: {enlaceActual.Text}");
-
-                    // Hacer clic en el enlace
-                    enlaceActual.Click();
-
-                    #region ExtraerTablas
-
-                    try
-                    {
-                        // Obtener el título y la última parte de la URL
-                        string tituloPagina = driver.Title;
-                        Uri uri = new Uri(driver.Url);
-                        string segmentoUrl = Path.GetFileName(uri.AbsolutePath.TrimEnd('/'));
-
-                        By selectorTablasConId = By.CssSelector("table[id]");
-
-                        // Esperar a que exista al menos una tabla con ID en la nueva página
-                        wait.Until(d => d.FindElements(selectorTablasConId).Count > 0);
-
-                        // PASO 1: Extraer todos los IDs de las tablas
-                        List<string> listaIds = driver.FindElements(selectorTablasConId)
-                                                      .Select(tabla => tabla.GetAttribute("id"))
-                                                      .Where(id => !string.IsNullOrWhiteSpace(id))
-                                                      .ToList();
-
-                        Console.WriteLine($"-> Se encontraron {listaIds.Count} tablas con ID.");
-
-                        // CORRECCIÓN: Usar índice 'j' para recorrer listaIds
-                        for (int j = 0; j < listaIds.Count; j++)
-                        {
-                            string idActual = listaIds[j]; // <--- CORREGIDO (antes decía 'i')
-
-                            By selectorTablaActual = By.Id(idActual);
-
-                            try
-                            {
-                                IWebElement tablaActual = driver.FindElement(selectorTablaActual);
-
-                                string innerTextTabla = tablaActual.GetDomProperty("innerText")
-                                                     ?? tablaActual.GetAttribute("innerText")
-                                                     ?? string.Empty;
-
-                                // Nombre y guardado del archivo
-                                string nombreArchivo = $"{segmentoUrl}_tabla_{idActual}.txt";
-                                string rutaArchivoCompleta = Path.Combine(Properties.Settings.Default.RutaDatosExtraidos, nombreArchivo);
-
-                                File.WriteAllText(rutaArchivoCompleta, innerTextTabla, Encoding.UTF8);
-
-                                // CORRECCIÓN: Mostrar 'j + 1' en lugar de 'i + 1'
-                                Console.WriteLine($"   [{j + 1}/{listaIds.Count}] Procesado ID '{idActual}' -> {nombreArchivo}");
-                            }
-                            catch (NoSuchElementException)
-                            {
-                                Console.WriteLine($"   [x] La tabla con ID '{idActual}' ya no existe en el DOM.");
-                            }
-                        }
-                    }
-                    catch (WebDriverTimeoutException)
-                    {
-                        Console.WriteLine($"[!] Tiempo de espera agotado: La página no cargó tablas con 'table[id]'.");
-                    }
-
-                    #endregion
-
-                    // Volver a la página principal
-                    driver.Navigate().Back();
-
-                    // ESPERA CRÍTICA: Asegurar que la página principal volvió a cargar antes del siguiente ciclo
-                    wait.Until(d => d.FindElements(locatorEnlaces).Count > 0);
-                }
-            }
-            catch (Exception)
-            {
-
-                throw;
-            }
-            finally
-            {
-                if (driver != null)
-                {
-                    driver.Quit();
-                }
-            }
+        if (!enCurso)
+        {
+            lblEstado.Text = "Listo.";
+            progressBarExtraccion.Value = 0;
         }
     }
 }

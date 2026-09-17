@@ -1,35 +1,47 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Text;
-using System.Windows.Forms;
+using Microsoft.Extensions.DependencyInjection;
+using WinTopGun.Application.Interfaces;
 
-namespace WinTopGun.UI.UserControls
+namespace WinTopGun.UI.UserControls;
+
+/// <summary>
+/// Ficha de opciones para configurar el directorio destino de los datos extraídos.
+/// </summary>
+public partial class uCtlFichaOpciones : UserControl
 {
-    public partial class uCtlFichaOpciones : UserControl
+    private readonly ISettingsProvider _settingsProvider;
+
+    /// <summary>Constructor usado por el diseñador.</summary>
+    public uCtlFichaOpciones() : this(Composition.Services.GetRequiredService<ISettingsProvider>())
     {
-        public uCtlFichaOpciones()
+    }
+
+    /// <summary>Constructor con inyección de dependencias.</summary>
+    public uCtlFichaOpciones(ISettingsProvider settingsProvider)
+    {
+        InitializeComponent();
+        _settingsProvider = settingsProvider;
+    }
+
+    private void picBoxDirectorio_Click(object sender, EventArgs e)
+    {
+        using var folderBrowserDialog = new FolderBrowserDialog
         {
-            InitializeComponent();
+            ShowNewFolderButton = true,
+            ShowPinnedPlaces = true,
+        };
+
+        if (folderBrowserDialog.ShowDialog(FindForm()) != DialogResult.OK)
+        {
+            return;
         }
 
-        private void picBoxDirectorio_Click(object sender, EventArgs e)
-        {
-            FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
+        _settingsProvider.OutputDirectory = folderBrowserDialog.SelectedPath;
+        _settingsProvider.Save();
 
-            folderBrowserDialog.ShowNewFolderButton = true;
-            folderBrowserDialog.ShowPinnedPlaces = true;
-
-            if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
-            {
-                Properties.Settings.Default.RutaDatosExtraidos = folderBrowserDialog.SelectedPath;
-                Properties.Settings.Default.Save();
-
-                MessageBox.Show($"{Properties.Settings.Default.RutaDatosExtraidos} - Directorio de destino actualizado correctamente.", "Información", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-
-        }
+        MessageBox.Show(
+            $"{folderBrowserDialog.SelectedPath} - Directorio de destino actualizado correctamente.",
+            "Información",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
     }
 }
