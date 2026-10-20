@@ -1,34 +1,9 @@
 namespace WinTopGun.Domain.Models;
 
 /// <summary>
-/// Registro de un partido procesado por el proceso de extracción de partidos.
-/// Un partido con <see cref="Errors"/> vacío se considera completado; con errores,
-/// queda a modo de diagnóstico y será reintentado en la siguiente ejecución.
-/// </summary>
-public sealed class MatchProgressRecord
-{
-    /// <summary>URL de la página del equipo al que pertenece el partido.</summary>
-    public string TeamUrl { get; set; } = string.Empty;
-
-    /// <summary>Nombre del equipo (diagnóstico).</summary>
-    public string TeamName { get; set; } = string.Empty;
-
-    /// <summary>URL del reporte del partido (clave única del registro).</summary>
-    public string MatchUrl { get; set; } = string.Empty;
-
-    /// <summary>Último segmento de la URL del partido (diagnóstico y trazabilidad con los archivos exportados).</summary>
-    public string Segment { get; set; } = string.Empty;
-
-    /// <summary>Fecha UTC en que se registró el partido.</summary>
-    public DateTime ProcessedAtUtc { get; set; }
-
-    /// <summary>Incidencias de exportación; vacío si el partido se completó correctamente.</summary>
-    public List<string> Errors { get; set; } = [];
-}
-
-/// <summary>
 /// Estado completo del registro de progreso del proceso de partidos,
-/// persistido en <c>progreso_partidos.json</c>.
+/// persistido en <c>progreso_partidos.json</c>. Lleva el conteo de partidos
+/// procesados por equipo para reanudar la extracción desde el siguiente enlace.
 /// </summary>
 public sealed class MatchProgressState
 {
@@ -45,12 +20,20 @@ public sealed class MatchProgressState
     public const int CurrentVersion = 1;
 }
 
-/// <summary>Progreso de los partidos de un equipo.</summary>
+/// <summary>
+/// Progreso de los partidos de un equipo: lista ordenada de los partidos
+/// procesados exitosamente. El orden corresponde al orden de procesamiento,
+/// que es el mismo orden de aparición en la tabla <c>matchlogs_for</c> del
+/// sitio, lo que permite omitir los primeros N enlaces al reanudar.
+/// </summary>
 public sealed class TeamProgress
 {
     /// <summary>Nombre del equipo.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Partidos procesados, indexados por la URL del reporte del partido.</summary>
-    public Dictionary<string, MatchProgressRecord> Matches { get; set; } = [];
+    /// <summary>
+    /// URLs de los partidos procesados exitosamente, en orden de procesamiento.
+    /// Los partidos con errores de exportación no se incluyen: se reintentan.
+    /// </summary>
+    public List<string> ProcessedMatchUrls { get; set; } = [];
 }

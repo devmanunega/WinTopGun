@@ -300,7 +300,7 @@ public sealed class LeagueScrapingService : IScrapingService
 
         // Registro de progreso: permite reanudar procesando solo los partidos pendientes.
         IMatchProgressRepository progreso = _progressRepositoryFactory.Create(matchDirectory);
-        int yaProcesados = ContarPartidosCompletados(progreso.Load());
+        int yaProcesados = progreso.Load().Teams.Values.Sum(equipo => equipo.ProcessedMatchUrls.Count);
         if (yaProcesados > 0)
         {
             _logger.LogInformation("Reanudando extracción de partidos: {Completed} partidos ya procesados; se continuarán los pendientes", yaProcesados);
@@ -362,12 +362,32 @@ public sealed class LeagueScrapingService : IScrapingService
         return result;
     }
 
-    /// <summary>Cuenta los partidos completados (sin errores) en el estado del registro.</summary>
-    private static int ContarPartidosCompletados(MatchProgressState estado) =>
-        estado.Teams.Values.Sum(equipo => equipo.Matches.Values.Count(p => p.Errors.Count == 0));
-
     /// <summary>Texto que identifica el enlace de un partido ya disputado.</summary>
     private const string MatchReportText = "Match Report";
+
+    /// <summary>
+    /// Cuenta los partidos iniciales del equipo que ya constan en el registro
+    /// (misma posición y misma URL), para continuar desde el siguiente enlace.
+    /// La verificación posición por posición detiene el conteo si el orden del
+    /// sitio cambiara, para nunca omitir un partido por error.
+    /// </summary>
+    private static int ContarProcesadosConsecutivos(
+        IMatchProgressRepository progreso,
+        string teamUrl,
+        List<(string Url, string Text)> partidos)
+    {
+        IReadOnlyList<string> procesados = progreso.GetProcessedMatchUrls(teamUrl);
+        int saltar = 0;
+
+        while (saltar < procesados.Count
+            && saltar < partidos.Count
+            && string.Equals(partidos[saltar].Url, procesados[saltar], StringComparison.OrdinalIgnoreCase))
+        {
+            saltar++;
+        }
+
+        return saltar;
+    }
 
     /// <summary>
     /// Indica si el texto del enlace corresponde a un partido disputado
@@ -477,16 +497,18 @@ public sealed class LeagueScrapingService : IScrapingService
         _logger.LogInformation("Equipo '{Team}': {Count} partidos disputados detectados (de {Rows} filas en matchlogs_for)",
             teamName, partidos.Count, tablaPartidos.FindElements(Selectors.MatchLogRows).Count);
 
-        // Reanudación: solo se procesan partidos pendientes; los ya registrados
-        // exitosamente se omiten para no repetir trabajo.
-        List<(string Url, string Text)> pendientes = [.. partidos.Where(p => !progreso.IsProcessed(teamUrl, p.Url))];
-        int omitidos = partidos.Count - pendientes.Count;
-        if (omitidos > 0)
+        // Reanudación por conteo: se omiten los primeros enlaces que ya constan en
+        // el registro del equipo y se continúa a partir del siguiente enlace
+        // pendiente (p. ej. 5 de 10 procesados → se procesa desde el enlace 6).
+        int yaProcesados = ContarProcesadosConsecutivos(progreso, teamUrl, partidos);
+        result.MatchesSkipped += yaProcesados;
+        if (yaProcesados > 0)
         {
-            result.MatchesSkipped += omitidos;
-            _logger.LogInformation("Equipo '{Team}': se omiten {Skipped} partidos ya procesados; pendientes: {Pending}",
-                teamName, omitidos, pendientes.Count);
+            _logger.LogInformation("Equipo '{Team}': {Skipped} partidos ya procesados; se continúa desde el enlace {Next} de {Total}",
+                teamName, yaProcesados, yaProcesados + 1, partidos.Count);
         }
+
+        List<(string Url, string Text)> pendientes = [.. partidos.Skip(yaProcesados)];
 
         for (int m = 0; m < pendientes.Count; m++)
         {
@@ -523,47 +545,24 @@ public sealed class LeagueScrapingService : IScrapingService
             ExportElementContent(driver, matchDirectory, pageSegment, Selectors.ScoreboxMeta, "scorebox_meta", result, cancellationToken);
             ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken);
 
-            // Registro de progreso: el partido se marca con sus incidencias; solo
-            // se considera procesado (y omitible) si la exportación fue limpia.
-            RegistrarResultadoPartido(progreso, teamUrl, teamName, matchUrl, pageSegment, [.. result.Errors.Skip(erroresAntes)]);
+            // Registro de progreso: solo se marca si la exportación fue limpia; un
+            // partido con incidencias se reintentará en la próxima ejecución.
+            if (result.Errors.Count == erroresAntes)
+            {
+                progreso.MarkMatchProcessed(teamUrl, teamName, matchUrl);
+                _logger.LogDebug("Partido '{Match}' registrado como procesado ({Processed}/{Total} del equipo)",
+                    matchUrl, erroresAntes, pendientes.Count);
+            }
+            else
+            {
+                _logger.LogWarning("El partido '{Match}' terminó con {Count} incidencia(s); se reintentará en la próxima ejecución",
+                    matchUrl, result.Errors.Count - erroresAntes);
+            }
 
             // Volver a la página del equipo antes del siguiente partido.
             driver.Navigate().Back();
             WaitForPageComplete(driver, wait);
             wait.Until(d => d.FindElements(Selectors.MatchLogsTable).Count > 0);
-        }
-    }
-
-    /// <summary>
-    /// Registra el resultado de un partido en el registro de progreso. Un partido
-    /// con incidencias queda a modo de diagnóstico y se reintentará en la próxima
-    /// ejecución; uno limpio se considera procesado y omitible.
-    /// </summary>
-    private void RegistrarResultadoPartido(
-        IMatchProgressRepository progreso,
-        string teamUrl,
-        string teamName,
-        string matchUrl,
-        string segment,
-        List<string> erroresPartido)
-    {
-        progreso.MarkMatchProcessed(new MatchProgressRecord
-        {
-            TeamUrl = teamUrl,
-            TeamName = teamName,
-            MatchUrl = matchUrl,
-            Segment = segment,
-            Errors = erroresPartido,
-        });
-
-        if (erroresPartido.Count == 0)
-        {
-            _logger.LogDebug("Partido '{Match}' registrado como procesado", matchUrl);
-        }
-        else
-        {
-            _logger.LogWarning("El partido '{Match}' terminó con {Count} incidencia(s); se reintentará en la próxima ejecución",
-                matchUrl, erroresPartido.Count);
         }
     }
 

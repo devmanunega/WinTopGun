@@ -19,9 +19,11 @@ public sealed class JsonMatchProgressRepositoryFactory(ILoggerFactory loggerFact
 
 /// <summary>
 /// Registro de progreso persistido en JSON dentro del directorio de detalles de
-/// partidos. Escritura atómica (temporal + reemplazo) y recuperación ante
-/// corrupción: un archivo ilegible se aparta con sufijo de fecha y se continúa
-/// con un registro vacío, nunca bloqueando la extracción.
+/// partidos. Por cada equipo guarda la lista ordenada de partidos procesados
+/// exitosamente, de modo que la reanudación continúe desde el siguiente enlace.
+/// Escritura atómica (temporal + reemplazo) y recuperación ante corrupción: un
+/// archivo ilegible se aparta con sufijo de fecha y se continúa con un registro
+/// vacío, nunca bloqueando la extracción.
 /// </summary>
 public sealed class JsonMatchProgressRepository(
     string matchDetailsDirectory,
@@ -59,7 +61,7 @@ public sealed class JsonMatchProgressRepository(
             string json = File.ReadAllText(_filePath);
             _state = JsonSerializer.Deserialize<MatchProgressState>(json) ?? new MatchProgressState();
 
-            int completados = CountCompleted();
+            int completados = _state.Teams.Values.Sum(equipo => equipo.ProcessedMatchUrls.Count);
             _logger.LogInformation("Registro de progreso cargado: {Completed} partidos completados de {Teams} equipos",
                 completados, _state.Teams.Count);
         }
@@ -87,36 +89,38 @@ public sealed class JsonMatchProgressRepository(
     }
 
     /// <inheritdoc />
-    public void MarkMatchProcessed(MatchProgressRecord record)
+    public void MarkMatchProcessed(string teamUrl, string teamName, string matchUrl)
     {
-        ArgumentNullException.ThrowIfNull(record);
-        ArgumentException.ThrowIfNullOrWhiteSpace(record.TeamUrl);
-        ArgumentException.ThrowIfNullOrWhiteSpace(record.MatchUrl);
+        ArgumentException.ThrowIfNullOrWhiteSpace(teamUrl);
+        ArgumentException.ThrowIfNullOrWhiteSpace(matchUrl);
 
         var state = Load();
-        record.ProcessedAtUtc = DateTime.UtcNow;
 
-        if (!state.Teams.TryGetValue(record.TeamUrl, out var equipo))
+        if (!state.Teams.TryGetValue(teamUrl, out var equipo))
         {
             equipo = new TeamProgress();
-            state.Teams[record.TeamUrl] = equipo;
+            state.Teams[teamUrl] = equipo;
         }
 
-        equipo.Name = record.TeamName;
-        equipo.Matches[record.MatchUrl] = record;
-        state.UpdatedAtUtc = DateTime.UtcNow;
+        equipo.Name = teamName;
 
+        if (!equipo.ProcessedMatchUrls.Contains(matchUrl, StringComparer.OrdinalIgnoreCase))
+        {
+            equipo.ProcessedMatchUrls.Add(matchUrl);
+        }
+
+        state.UpdatedAtUtc = DateTime.UtcNow;
         Persist(state);
+
+        _logger.LogDebug("Partido registrado para '{Team}': {Count} procesados en total",
+            teamName, equipo.ProcessedMatchUrls.Count);
     }
 
     /// <inheritdoc />
-    public bool IsProcessed(string teamUrl, string matchUrl)
-    {
-        var state = Load();
-        return state.Teams.TryGetValue(teamUrl, out var equipo)
-            && equipo.Matches.TryGetValue(matchUrl, out var partido)
-            && partido.Errors.Count == 0;
-    }
+    public IReadOnlyList<string> GetProcessedMatchUrls(string teamUrl) =>
+        Load().Teams.TryGetValue(teamUrl, out var equipo)
+            ? equipo.ProcessedMatchUrls
+            : [];
 
     /// <inheritdoc />
     public void Reset()
@@ -137,10 +141,6 @@ public sealed class JsonMatchProgressRepository(
             _logger.LogWarning(ex, "No se pudo eliminar el registro de progreso '{File}'", _filePath);
         }
     }
-
-    /// <summary>Cantidad de partidos completados (sin errores) en el estado actual.</summary>
-    private int CountCompleted() =>
-        _state.Teams.Values.Sum(equipo => equipo.Matches.Values.Count(p => p.Errors.Count == 0));
 
     /// <summary>Persiste el estado de forma atómica: escribe un temporal y lo reemplaza.</summary>
     private void Persist(MatchProgressState state)

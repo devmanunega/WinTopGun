@@ -3,8 +3,8 @@ using WinTopGun.Domain.Models;
 namespace WinTopGun.Application.Interfaces;
 
 /// <summary>
-/// Registro de progreso del proceso de partidos: permite reanudar la extracción
-/// procesando únicamente los partidos pendientes de cada equipo.
+/// Registro de progreso del proceso de partidos: lleva el conteo de partidos
+/// procesados por equipo para reanudar la extracción desde el siguiente enlace.
 /// </summary>
 public interface IMatchProgressRepository
 {
@@ -15,16 +15,16 @@ public interface IMatchProgressRepository
     MatchProgressState Load();
 
     /// <summary>
-    /// Registra un partido y persiste el registro de inmediato de forma atómica
-    /// (escritura temporal + reemplazo), de modo que un fallo no lo corrompa.
+    /// Registra un partido como procesado para el equipo indicado y persiste el
+    /// registro de inmediato de forma atómica (escritura temporal + reemplazo).
     /// </summary>
-    void MarkMatchProcessed(MatchProgressRecord record);
+    void MarkMatchProcessed(string teamUrl, string teamName, string matchUrl);
 
     /// <summary>
-    /// Indica si un partido ya fue procesado <b>exitosamente</b>: los partidos con
-    /// errores de exportación no cuentan como procesados y se reintentarán.
+    /// Devuelve las URLs de los partidos procesados exitosamente del equipo, en el
+    /// orden en que fueron procesados. Los partidos con errores no se incluyen.
     /// </summary>
-    bool IsProcessed(string teamUrl, string matchUrl);
+    IReadOnlyList<string> GetProcessedMatchUrls(string teamUrl);
 
     /// <summary>Elimina el registro de progreso (vuelve a empezar de cero).</summary>
     void Reset();

@@ -1,6 +1,8 @@
 # Plan de Trabajo — Continuidad del proceso "Partidos" (reanudación con registro de progreso)
 
-> **Estado: ✅ EJECUTADO** (rama `ProgresoPartidos`). Fases 1–6 completadas: registro de progreso JSON con escritura atómica, reanudación automática por partido, opción de reinicio en el menú y 41 pruebas en verde (`dotnet test`).
+> **Estado: ✅ EJECUTADO** (rama `ProgresoPartidos`). Fases 1–6 completadas: registro de progreso JSON con escritura atómica, reanudación automática y 42 pruebas en verde (`dotnet test`).
+>
+> **Ajuste tras prueba real**: la reanudación por URL individual no resultó confiable en producción; se cambió a **reanudación por conteo por equipo** — el registro guarda la lista ordenada de partidos procesados de cada equipo y la extracción continúa desde el enlace N+1, verificando posición y URL para nunca omitir partidos si el orden del sitio cambiara.
 > **Objetivo**: garantizar que, si el programa falla o se interrumpe a mitad de la extracción de partidos, el proceso pueda **reanudarse donde quedó** sin repetir trabajo ya hecho.
 
 ---

@@ -6,10 +6,14 @@ namespace WinTopGun.Tests;
 
 /// <summary>
 /// Pruebas unitarias de <see cref="JsonMatchProgressRepository"/> usando archivos
-/// temporales reales: persistencia, escritura atómica, corrupción y reinicio.
+/// temporales reales: persistencia, conteo por equipo, escritura atómica,
+/// corrupción y reinicio.
 /// </summary>
 public sealed class JsonMatchProgressRepositoryTests : IDisposable
 {
+    private const string TeamUrl = "https://sitio.test/equipos/equipo-1";
+    private const string TeamName = "Equipo de prueba";
+
     private readonly string _directorio;
 
     public JsonMatchProgressRepositoryTests()
@@ -33,31 +37,39 @@ public sealed class JsonMatchProgressRepositoryTests : IDisposable
     private JsonMatchProgressRepository CrearRepositorio() =>
         new(_directorio, NullLogger<JsonMatchProgressRepository>.Instance);
 
-    private MatchProgressRecord CrearRegistro(int numero) => new()
-    {
-        TeamUrl = "https://sitio.test/equipos/equipo-1",
-        TeamName = "Equipo de prueba",
-        MatchUrl = $"https://sitio.test/partidos/partido-{numero}",
-        Segment = $"partido-{numero}",
-    };
-
     [Fact]
     public void Persistencia_RoundTrip_RecuperaLosDatos()
     {
         // Arrange
-        CrearRepositorio().MarkMatchProcessed(CrearRegistro(1));
+        var repositorio = CrearRepositorio();
+        repositorio.MarkMatchProcessed(TeamUrl, TeamName, "https://sitio.test/partidos/partido-1");
+        repositorio.MarkMatchProcessed(TeamUrl, TeamName, "https://sitio.test/partidos/partido-2");
 
         // Act: nueva instancia sobre el mismo directorio (simula reinicio de la app).
+        var repositorio2 = CrearRepositorio();
+        var estado = repositorio2.Load();
+
+        // Assert: conteo y orden de partidos procesados del equipo.
+        var procesados = repositorio2.GetProcessedMatchUrls(TeamUrl);
+        Assert.Equal(2, procesados.Count);
+        Assert.Equal("https://sitio.test/partidos/partido-1", procesados[0]);
+        Assert.Equal("https://sitio.test/partidos/partido-2", procesados[1]);
+        Assert.Equal(TeamName, estado.Teams[TeamUrl].Name);
+        Assert.Equal(MatchProgressState.CurrentVersion, estado.Version);
+    }
+
+    [Fact]
+    public void MarkMatchProcessed_MarcaDuplicada_NoDuplicaElConteo()
+    {
+        // Arrange
         var repositorio = CrearRepositorio();
-        var estado = repositorio.Load();
+
+        // Act
+        repositorio.MarkMatchProcessed(TeamUrl, TeamName, "https://sitio.test/partidos/partido-1");
+        repositorio.MarkMatchProcessed(TeamUrl, TeamName, "https://sitio.test/partidos/partido-1");
 
         // Assert
-        Assert.True(repositorio.IsProcessed("https://sitio.test/equipos/equipo-1", "https://sitio.test/partidos/partido-1"));
-        var equipo = Assert.Single(estado.Teams.Values);
-        Assert.Equal("Equipo de prueba", equipo.Name);
-        var registro = Assert.Single(equipo.Matches.Values);
-        Assert.Equal("partido-1", registro.Segment);
-        Assert.Equal(MatchProgressState.CurrentVersion, estado.Version);
+        Assert.Single(repositorio.GetProcessedMatchUrls(TeamUrl));
     }
 
     [Fact]
@@ -67,8 +79,8 @@ public sealed class JsonMatchProgressRepositoryTests : IDisposable
         var repositorio = CrearRepositorio();
 
         // Act
-        repositorio.MarkMatchProcessed(CrearRegistro(1));
-        repositorio.MarkMatchProcessed(CrearRegistro(2));
+        repositorio.MarkMatchProcessed(TeamUrl, TeamName, "https://sitio.test/partidos/partido-1");
+        repositorio.MarkMatchProcessed(TeamUrl, TeamName, "https://sitio.test/partidos/partido-2");
 
         // Assert: el registro existe y es el único archivo del directorio (sin temporales residuales).
         Assert.True(File.Exists(Path.Combine(_directorio, JsonMatchProgressRepository.FileName)));
@@ -96,27 +108,24 @@ public sealed class JsonMatchProgressRepositoryTests : IDisposable
     {
         // Arrange
         var repositorio = CrearRepositorio();
-        repositorio.MarkMatchProcessed(CrearRegistro(1));
+        repositorio.MarkMatchProcessed(TeamUrl, TeamName, "https://sitio.test/partidos/partido-1");
 
         // Act
         repositorio.Reset();
 
         // Assert
         Assert.False(File.Exists(Path.Combine(_directorio, JsonMatchProgressRepository.FileName)));
-        Assert.False(repositorio.IsProcessed("https://sitio.test/equipos/equipo-1", "https://sitio.test/partidos/partido-1"));
+        Assert.Empty(repositorio.GetProcessedMatchUrls(TeamUrl));
     }
 
     [Fact]
-    public void IsProcessed_PartidoConErrores_RetornaFalso()
+    public void GetProcessedMatchUrls_EquipoDesconocido_RetornaListaVacia()
     {
-        // Arrange: partido registrado pero con incidencias de exportación.
+        // Arrange
         var repositorio = CrearRepositorio();
-        var registro = CrearRegistro(1);
-        registro.Errors.Add("Partido 'partido-1': la tabla 'x' no existe.");
-        repositorio.MarkMatchProcessed(registro);
 
         // Act + Assert
-        Assert.False(repositorio.IsProcessed(registro.TeamUrl, registro.MatchUrl));
+        Assert.Empty(repositorio.GetProcessedMatchUrls("https://sitio.test/equipos/desconocido"));
     }
 
     [Fact]

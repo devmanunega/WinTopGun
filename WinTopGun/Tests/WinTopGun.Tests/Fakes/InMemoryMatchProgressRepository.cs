@@ -1,5 +1,3 @@
-using System.Collections.ObjectModel;
-using OpenQA.Selenium;
 using WinTopGun.Application.Interfaces;
 using WinTopGun.Domain.Models;
 
@@ -16,24 +14,26 @@ internal sealed class InMemoryMatchProgressRepository : IMatchProgressRepository
 
     public MatchProgressState Load() => State;
 
-    public void MarkMatchProcessed(MatchProgressRecord record)
+    public void MarkMatchProcessed(string teamUrl, string teamName, string matchUrl)
     {
-        record.ProcessedAtUtc = DateTime.UtcNow;
-
-        if (!State.Teams.TryGetValue(record.TeamUrl, out var equipo))
+        if (!State.Teams.TryGetValue(teamUrl, out var equipo))
         {
             equipo = new TeamProgress();
-            State.Teams[record.TeamUrl] = equipo;
+            State.Teams[teamUrl] = equipo;
         }
 
-        equipo.Name = record.TeamName;
-        equipo.Matches[record.MatchUrl] = record;
+        equipo.Name = teamName;
+
+        if (!equipo.ProcessedMatchUrls.Contains(matchUrl, StringComparer.OrdinalIgnoreCase))
+        {
+            equipo.ProcessedMatchUrls.Add(matchUrl);
+        }
     }
 
-    public bool IsProcessed(string teamUrl, string matchUrl) =>
+    public IReadOnlyList<string> GetProcessedMatchUrls(string teamUrl) =>
         State.Teams.TryGetValue(teamUrl, out var equipo)
-        && equipo.Matches.TryGetValue(matchUrl, out var partido)
-        && partido.Errors.Count == 0;
+            ? equipo.ProcessedMatchUrls
+            : [];
 
     public void Reset()
     {

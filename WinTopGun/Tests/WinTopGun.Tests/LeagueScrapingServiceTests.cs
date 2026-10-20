@@ -441,12 +441,8 @@ public sealed class LeagueScrapingServiceTests
         string teamUrl = "https://sitio-de-prueba.test/equipos/equipo-1";
         foreach (int i in new[] { 1, 2 })
         {
-            progressFactory.Repository.MarkMatchProcessed(new MatchProgressRecord
-            {
-                TeamUrl = teamUrl,
-                TeamName = "Equipo de prueba",
-                MatchUrl = $"https://sitio-de-prueba.test/partidos/partido-{i}",
-            });
+            progressFactory.Repository.MarkMatchProcessed(
+                teamUrl, "Equipo de prueba", $"https://sitio-de-prueba.test/partidos/partido-{i}");
         }
         var service = CreateService(driver, out _, out var exporter, progressFactory);
 
@@ -471,12 +467,8 @@ public sealed class LeagueScrapingServiceTests
         string teamUrl = "https://sitio-de-prueba.test/equipos/equipo-1";
         foreach (int i in new[] { 1, 2 })
         {
-            progressFactory.Repository.MarkMatchProcessed(new MatchProgressRecord
-            {
-                TeamUrl = teamUrl,
-                TeamName = "Equipo de prueba",
-                MatchUrl = $"https://sitio-de-prueba.test/partidos/partido-{i}",
-            });
+            progressFactory.Repository.MarkMatchProcessed(
+                teamUrl, "Equipo de prueba", $"https://sitio-de-prueba.test/partidos/partido-{i}");
         }
         var service = CreateService(driver, out _, out var exporter, progressFactory);
 
@@ -503,12 +495,9 @@ public sealed class LeagueScrapingServiceTests
         // Act
         ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
 
-        // Assert: el partido quedó registrado solo como diagnóstico, no como procesado.
+        // Assert: el partido con errores NO se registra como procesado (se reintentará).
         Assert.False(resultado.Success);
-        var equipo = Assert.Single(progressFactory.Repository.State.Teams.Values);
-        var registro = Assert.Single(equipo.Matches.Values);
-        Assert.NotEmpty(registro.Errors);
-        Assert.False(progressFactory.Repository.IsProcessed(registro.TeamUrl, registro.MatchUrl));
+        Assert.Empty(progressFactory.Repository.GetProcessedMatchUrls("https://sitio-de-prueba.test/equipos/equipo-1"));
     }
 
     [Fact]
