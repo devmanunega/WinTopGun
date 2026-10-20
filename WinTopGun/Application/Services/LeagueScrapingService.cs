@@ -369,7 +369,7 @@ public sealed class LeagueScrapingService : IScrapingService
 
         // Primera tabla de la página de liga (clasificación); contiene la lista de equipos.
         wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
-        IWebElement tablaEquipos = driver.FindElements(Selectors.TablesWithId)[0];
+        IWebElement tablaEquipos = FindStandingsTable(driver);
 
         // Recolectar los enlaces de equipos por adelantado: navegar por URL evita
         // elementos obsoletos (stale) al regresar de cada página visitada.
@@ -434,10 +434,13 @@ public sealed class LeagueScrapingService : IScrapingService
     {
         IWebElement tablaPartidos = driver.FindElement(Selectors.MatchLogsTable);
 
-        // Recolectar los enlaces de partidos por adelantado (penúltimo td de cada fila).
+        // Recolectar los enlaces de partidos por adelantado: se prefiere la columna
+        // estándar (data-stat="match_report") y, como alternativa, el penúltimo td
+        // de cada fila.
         List<(string Url, string Text)> partidos = [.. tablaPartidos
             .FindElements(Selectors.MatchLogRows)
-            .Select(row => row.FindElements(Selectors.PenultimateCellLink).FirstOrDefault())
+            .Select(row => row.FindElements(Selectors.MatchReportLink).FirstOrDefault()
+                ?? row.FindElements(Selectors.PenultimateCellLink).FirstOrDefault())
             .Where(link => link is not null)
             .Select(link => (Url: link!.GetAttribute("href"), Text: link.Text))
             .Where(x => !string.IsNullOrWhiteSpace(x.Url))];
@@ -519,6 +522,23 @@ public sealed class LeagueScrapingService : IScrapingService
             _logger.LogWarning("Elemento obsoleto al procesar '{ElementId}' en '{Segment}'", elementId, pageSegment);
             result.Errors.Add($"Partido '{pageSegment}': el elemento '{elementId}' quedó obsoleto (stale element).");
         }
+    }
+
+    /// <summary>
+    /// Localiza la tabla de clasificación de la liga: prioriza la tabla cuyo <c>id</c>
+    /// sigue el patrón del sitio (<c>results…_overall</c>, p. ej.
+    /// <c>results2026-202791_overall</c>) y, si no existe, usa la primera <c>table[id]</c>.
+    /// </summary>
+    private static IWebElement FindStandingsTable(IWebDriver driver)
+    {
+        List<IWebElement> tablas = [.. driver.FindElements(Selectors.TablesWithId)];
+        return tablas.FirstOrDefault(t =>
+        {
+            string id = t.GetAttribute("id") ?? string.Empty;
+            return id.StartsWith("results", StringComparison.Ordinal) && id.EndsWith("_overall", StringComparison.Ordinal);
+        })
+            ?? tablas.FirstOrDefault()
+            ?? throw new NoSuchElementException("No se encontró la tabla de clasificación en la página de la liga.");
     }
 
     /// <summary>

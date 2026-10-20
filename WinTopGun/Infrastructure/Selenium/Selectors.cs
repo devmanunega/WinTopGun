@@ -20,8 +20,8 @@ public static class Selectors
     /// <summary>Tabla con un identificador concreto.</summary>
     public static By TableById(string id) => By.Id(id);
 
-    /// <summary>Enlace de equipo en una fila de la tabla de clasificación: primer <c>td</c> de cada <c>tr</c>.</summary>
-    public static readonly By FirstCellLink = By.CssSelector("td:first-child a");
+    /// <summary>Enlace de equipo en una fila de la tabla de clasificación: primera celda de cada <c>tr</c> (sea <c>td</c> o <c>th</c>, según la estructura del sitio).</summary>
+    public static readonly By FirstCellLink = By.CssSelector("tr > :first-child a");
 
     /// <summary>Tabla de historial de partidos de un equipo (<c>matchlogs_for</c>).</summary>
     public static readonly By MatchLogsTable = By.Id("matchlogs_for");
@@ -29,7 +29,10 @@ public static class Selectors
     /// <summary>Filas de la tabla de historial de partidos.</summary>
     public static readonly By MatchLogRows = By.CssSelector("#matchlogs_for tr");
 
-    /// <summary>Enlace del reporte del partido: penúltimo <c>td</c> de cada fila.</summary>
+    /// <summary>Enlace del reporte del partido en su columna estándar (<c>data-stat="match_report"</c>).</summary>
+    public static readonly By MatchReportLink = By.CssSelector("td[data-stat='match_report'] a");
+
+    /// <summary>Enlace del reporte del partido: penúltimo <c>td</c> de cada fila (alternativa si la columna no usa <c>data-stat</c>).</summary>
     public static readonly By PenultimateCellLink = By.CssSelector("td:nth-last-child(2) a");
 
     /// <summary>Div de metadatos del partido en la página de detalle.</summary>

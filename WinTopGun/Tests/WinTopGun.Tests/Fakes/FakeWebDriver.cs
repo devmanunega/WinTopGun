@@ -195,7 +195,7 @@ internal static class FakeWebElementExtensions
     /// <summary>Configura el elemento para responder al selector de enlace de equipo (primer td de cada tr).</summary>
     public static FakeWebElement WithTeamLinks(this FakeWebElement element, List<string> hrefs)
     {
-        element.SetFindElementsHandler(criteria => criteria.Contains("td:first-child")
+        element.SetFindElementsHandler(criteria => criteria.Contains("first-child")
             ? [.. hrefs.Select(href => (IWebElement)new FakeWebElement($"equipo {href}", href: href))]
             : null);
         return element;
@@ -206,7 +206,7 @@ internal static class FakeWebElementExtensions
     {
         element.SetFindElementsHandler(criteria => criteria.Contains("#matchlogs_for") && criteria.EndsWith("tr", StringComparison.Ordinal)
             ? [.. hrefs.Select(href => (IWebElement)new FakeWebElement("fila",
-                findElementsHandler: rowCriteria => rowCriteria.Contains("nth-last-child(2)")
+                findElementsHandler: rowCriteria => rowCriteria.Contains("nth-last-child(2)") || rowCriteria.Contains("match_report")
                     ? [new FakeWebElement("Match Report", href: href)]
                     : null))]
             : null);
