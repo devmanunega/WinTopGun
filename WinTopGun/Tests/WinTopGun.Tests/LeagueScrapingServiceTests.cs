@@ -303,7 +303,7 @@ public sealed class LeagueScrapingServiceTests
             $"Tiempo transcurrido insuficiente para 4 pausas: {cronometro.ElapsedMilliseconds} ms");
     }
 
-    private static FakeWebDriver CreateDriverForMatches(int leagues = 1, int teams = 1, int matchesPerTeam = 2)
+    private static FakeWebDriver CreateDriverForMatches(int leagues = 1, int teams = 1, int matchesPerTeam = 2, List<string>? matchLinkTexts = null)
     {
         var driver = new FakeWebDriver
         {
@@ -319,6 +319,7 @@ public sealed class LeagueScrapingServiceTests
                 ("matchlogs_for", "partidos del equipo"),
                 ("tabla_partido", "contenido partido"),
             ],
+            MatchLinkTexts = matchLinkTexts,
             ExtraElementsById = new Dictionary<string, string>
             {
                 ["scorebox_meta"] = "metadatos del partido",
@@ -377,6 +378,25 @@ public sealed class LeagueScrapingServiceTests
     }
 
     [Fact]
+    public async Task Partidos_SoloProcesaPartidosConMatchReport()
+    {
+        // Arrange: 3 filas en matchlogs_for; la tercera es un partido pendiente sin reporte.
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 3, matchLinkTexts: ["Match Report", "Match Report", ""]);
+        var service = CreateService(driver, out _, out var exporter);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
+
+        // Assert: solo los 2 partidos disputados generan exportaciones (3 tablas + 2 divs cada uno).
+        Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
+        Assert.Equal(10, resultado.TablesExported);
+        Assert.Equal(10, exporter.Exports.Count);
+        Assert.Contains("https://sitio-de-prueba.test/partidos/partido-1", driver.VisitedUrls);
+        Assert.Contains("https://sitio-de-prueba.test/partidos/partido-2", driver.VisitedUrls);
+        Assert.DoesNotContain("https://sitio-de-prueba.test/partidos/partido-3", driver.VisitedUrls);
+    }
+
+    [Fact]
     public async Task Partidos_EquipoSinMatchlogs_ReportaErrorYContinua()
     {
         // Arrange
@@ -415,4 +435,5 @@ public sealed class LeagueScrapingServiceTests
         Assert.Equal(3, exporter.Exports.Count); // solo las 3 tablas con id del partido
     }
 }
+
 

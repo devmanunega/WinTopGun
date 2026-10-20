@@ -349,6 +349,16 @@ public sealed class LeagueScrapingService : IScrapingService
         return result;
     }
 
+    /// <summary>Texto que identifica el enlace de un partido ya disputado.</summary>
+    private const string MatchReportText = "Match Report";
+
+    /// <summary>
+    /// Indica si el texto del enlace corresponde a un partido disputado
+    /// ("Match Report"). Los partidos pendientes no tienen reporte.
+    /// </summary>
+    private static bool EsEnlacePartidoDisputado(string linkText) =>
+        string.Equals(linkText.Trim(), MatchReportText, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Itera los equipos de la tabla de clasificación de la liga actual (primer
     /// <c>td</c> de cada <c>tr</c>), abre la página de cada uno y delega en
@@ -373,10 +383,7 @@ public sealed class LeagueScrapingService : IScrapingService
 
         // Recolectar los enlaces de equipos por adelantado: navegar por URL evita
         // elementos obsoletos (stale) al regresar de cada página visitada.
-        List<(string Url, string Text)> equipos = [.. tablaEquipos
-            .FindElements(Selectors.FirstCellLink)
-            .Select(a => (Url: a.GetAttribute("href"), Text: a.Text))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Url))];
+        List<(string Url, string Text)> equipos = ExtraerEnlacesEquipos(tablaEquipos);
 
         _logger.LogInformation("Liga {Current}/{Total}: {Count} equipos detectados",
             currentLeague, totalLeagues, equipos.Count);
@@ -436,16 +443,19 @@ public sealed class LeagueScrapingService : IScrapingService
 
         // Recolectar los enlaces de partidos por adelantado: se prefiere la columna
         // estándar (data-stat="match_report") y, como alternativa, el penúltimo td
-        // de cada fila.
+        // de cada fila. Solo se procesan partidos ya disputados: el enlace del
+        // reporte contiene el texto "Match Report"; los encuentros pendientes no lo
+        // tienen, por lo que quedan fuera de la extracción.
         List<(string Url, string Text)> partidos = [.. tablaPartidos
             .FindElements(Selectors.MatchLogRows)
             .Select(row => row.FindElements(Selectors.MatchReportLink).FirstOrDefault()
                 ?? row.FindElements(Selectors.PenultimateCellLink).FirstOrDefault())
             .Where(link => link is not null)
             .Select(link => (Url: link!.GetAttribute("href"), Text: link.Text))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Url))];
+            .Where(x => !string.IsNullOrWhiteSpace(x.Url) && EsEnlacePartidoDisputado(x.Text))];
 
-        _logger.LogInformation("Equipo '{Team}': {Count} partidos detectados", teamName, partidos.Count);
+        _logger.LogInformation("Equipo '{Team}': {Count} partidos disputados detectados (de {Rows} filas en matchlogs_for)",
+            teamName, partidos.Count, tablaPartidos.FindElements(Selectors.MatchLogRows).Count);
 
         for (int m = 0; m < partidos.Count; m++)
         {
@@ -522,6 +532,25 @@ public sealed class LeagueScrapingService : IScrapingService
             _logger.LogWarning("Elemento obsoleto al procesar '{ElementId}' en '{Segment}'", elementId, pageSegment);
             result.Errors.Add($"Partido '{pageSegment}': el elemento '{elementId}' quedó obsoleto (stale element).");
         }
+    }
+
+    /// <summary>
+    /// Extrae los enlaces de equipo de la tabla de clasificación: usa la celda
+    /// estándar del sitio (<c>data-stat="team"</c>) y, si no produce resultados,
+    /// el primer <c>td</c> de cada fila.
+    /// </summary>
+    private static List<(string Url, string Text)> ExtraerEnlacesEquipos(IWebElement tablaEquipos)
+    {
+        List<IWebElement> enlaces = [.. tablaEquipos.FindElements(Selectors.TeamLink)];
+
+        if (enlaces.Count == 0)
+        {
+            enlaces = [.. tablaEquipos.FindElements(Selectors.FirstDataCellLink)];
+        }
+
+        return [.. enlaces
+            .Select(a => (Url: a.GetAttribute("href"), Text: a.Text))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Url))];
     }
 
     /// <summary>

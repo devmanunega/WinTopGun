@@ -25,6 +25,9 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Enlaces de reportes de partido (href) en las filas de 'matchlogs_for', uno por fila.</summary>
     public List<string> MatchReportHrefs { get; set; } = [];
 
+    /// <summary>Textos de los enlaces de partido, alineados con MatchReportHrefs. Nulo o fuera de rango = "Match Report".</summary>
+    public List<string>? MatchLinkTexts { get; set; }
+
     /// <summary>Elementos adicionales por id (p. ej. 'scorebox_meta', 'events_wrap') con su contenido de texto.</summary>
     public Dictionary<string, string> ExtraElementsById { get; set; } = [];
 
@@ -144,7 +147,7 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
             if (!MissingTableIds.Contains(id))
             {
                 _tablesById[id] = id == "matchlogs_for"
-                    ? new FakeWebElement($"tabla {id}", id, content).WithMatchLogRows(MatchReportHrefs)
+                    ? new FakeWebElement($"tabla {id}", id, content).WithMatchLogRows(MatchReportHrefs, MatchLinkTexts)
                     : new FakeWebElement($"tabla {id}", id, content);
             }
         }
@@ -195,20 +198,23 @@ internal static class FakeWebElementExtensions
     /// <summary>Configura el elemento para responder al selector de enlace de equipo (primer td de cada tr).</summary>
     public static FakeWebElement WithTeamLinks(this FakeWebElement element, List<string> hrefs)
     {
-        element.SetFindElementsHandler(criteria => criteria.Contains("first-child")
+        element.SetFindElementsHandler(criteria => criteria.Contains("first-child") || criteria.Contains("first-of-type") || criteria.Contains("'team'")
             ? [.. hrefs.Select(href => (IWebElement)new FakeWebElement($"equipo {href}", href: href))]
             : null);
         return element;
     }
 
     /// <summary>Configura el elemento para responder como tabla 'matchlogs_for' con filas de reportes de partido.</summary>
-    public static FakeWebElement WithMatchLogRows(this FakeWebElement element, List<string> hrefs)
+    public static FakeWebElement WithMatchLogRows(this FakeWebElement element, List<string> hrefs, List<string>? texts = null)
     {
         element.SetFindElementsHandler(criteria => criteria.Contains("#matchlogs_for") && criteria.EndsWith("tr", StringComparison.Ordinal)
-            ? [.. hrefs.Select(href => (IWebElement)new FakeWebElement("fila",
-                findElementsHandler: rowCriteria => rowCriteria.Contains("nth-last-child(2)") || rowCriteria.Contains("match_report")
-                    ? [new FakeWebElement("Match Report", href: href)]
-                    : null))]
+            ? [.. hrefs.Select((href, index) => (IWebElement)new FakeWebElement(
+                    texts is not null && index < texts.Count ? texts[index] : "Match Report",
+                    findElementsHandler: rowCriteria => rowCriteria.Contains("nth-last-child(2)") || rowCriteria.Contains("match_report")
+                        ? [new FakeWebElement(
+                            texts is not null && index < texts.Count ? texts[index] : "Match Report",
+                            href: href)]
+                        : null))]
             : null);
         return element;
     }

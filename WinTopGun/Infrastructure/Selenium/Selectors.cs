@@ -20,8 +20,11 @@ public static class Selectors
     /// <summary>Tabla con un identificador concreto.</summary>
     public static By TableById(string id) => By.Id(id);
 
-    /// <summary>Enlace de equipo en una fila de la tabla de clasificación: primera celda de cada <c>tr</c> (sea <c>td</c> o <c>th</c>, según la estructura del sitio).</summary>
-    public static readonly By FirstCellLink = By.CssSelector("tr > :first-child a");
+    /// <summary>Enlace de equipo en la tabla de clasificación: celda estándar del sitio (<c>data-stat="team"</c>).</summary>
+    public static readonly By TeamLink = By.CssSelector("td[data-stat='team'] a");
+
+    /// <summary>Enlace de equipo alternativo: primer <c>td</c> de cada <c>tr</c> (la primera celda puede ser un <c>th</c> con la posición).</summary>
+    public static readonly By FirstDataCellLink = By.CssSelector("td:first-of-type a");
 
     /// <summary>Tabla de historial de partidos de un equipo (<c>matchlogs_for</c>).</summary>
     public static readonly By MatchLogsTable = By.Id("matchlogs_for");
