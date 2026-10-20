@@ -18,6 +18,12 @@ public sealed class ScrapingOptions
     /// <summary>Clave de configuración para <see cref="HumanPauseMaxMilliseconds"/>.</summary>
     public const string HumanPauseMaxKey = "Scraping:HumanPauseMaxMs";
 
+    /// <summary>Clave de configuración para <see cref="MatchPauseMinMilliseconds"/>.</summary>
+    public const string MatchPauseMinKey = "Scraping:MatchPauseMinMs";
+
+    /// <summary>Clave de configuración para <see cref="MatchPauseMaxMilliseconds"/>.</summary>
+    public const string MatchPauseMaxKey = "Scraping:MatchPauseMaxMs";
+
     /// <summary>Valor por defecto del tiempo de espera.</summary>
     public const int DefaultWaitTimeoutSeconds = 10;
 
@@ -30,6 +36,12 @@ public sealed class ScrapingOptions
     /// <summary>Valor por defecto del límite superior de la pausa humana (ms).</summary>
     public const int DefaultHumanPauseMaxMs = 5000;
 
+    /// <summary>Valor por defecto del límite inferior de la pausa en páginas de partido (ms).</summary>
+    public const int DefaultMatchPauseMinMs = 3000;
+
+    /// <summary>Valor por defecto del límite superior de la pausa en páginas de partido (ms).</summary>
+    public const int DefaultMatchPauseMaxMs = 8000;
+
     /// <summary>Segundos máximos de espera explícita al cargar páginas o elementos.</summary>
     public int WaitTimeoutSeconds { get; set; } = DefaultWaitTimeoutSeconds;
 
@@ -41,4 +53,10 @@ public sealed class ScrapingOptions
 
     /// <summary>Límite superior (ms) de la pausa aleatoria tras la carga completa de una página, para simular navegación humana.</summary>
     public int HumanPauseMaxMilliseconds { get; set; } = DefaultHumanPauseMaxMs;
+
+    /// <summary>Límite inferior (ms) de la pausa aleatoria en la página de un partido, antes de extraer los datos. 0 o negativo desactiva la pausa.</summary>
+    public int MatchPauseMinMilliseconds { get; set; } = DefaultMatchPauseMinMs;
+
+    /// <summary>Límite superior (ms) de la pausa aleatoria en la página de un partido, antes de extraer los datos.</summary>
+    public int MatchPauseMaxMilliseconds { get; set; } = DefaultMatchPauseMaxMs;
 }

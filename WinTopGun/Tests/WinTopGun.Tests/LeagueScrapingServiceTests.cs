@@ -26,6 +26,8 @@ public sealed class LeagueScrapingServiceTests
             WaitTimeoutSeconds = 1,
             HumanPauseMinMilliseconds = 0,
             HumanPauseMaxMilliseconds = 0,
+            MatchPauseMinMilliseconds = 0,
+            MatchPauseMaxMilliseconds = 0,
         };
 
         return new LeagueScrapingService(
@@ -394,6 +396,36 @@ public sealed class LeagueScrapingServiceTests
         Assert.Contains("https://sitio-de-prueba.test/partidos/partido-1", driver.VisitedUrls);
         Assert.Contains("https://sitio-de-prueba.test/partidos/partido-2", driver.VisitedUrls);
         Assert.DoesNotContain("https://sitio-de-prueba.test/partidos/partido-3", driver.VisitedUrls);
+    }
+
+    [Fact]
+    public async Task Partidos_PausaYScrollSimulanRevisionDelPartido()
+    {
+        // Arrange: pausa de partido reducida (100-150 ms) pero verificable; 2 partidos = 2 pausas.
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 2);
+        var factory = new FakeDriverFactory(driver);
+        var exporter = new RecordingTableExporter();
+        var options = new ScrapingOptions
+        {
+            WaitTimeoutSeconds = 1,
+            HumanPauseMinMilliseconds = 0,
+            HumanPauseMaxMilliseconds = 0,
+            MatchPauseMinMilliseconds = 100,
+            MatchPauseMaxMilliseconds = 150,
+        };
+        var service = new LeagueScrapingService(factory, exporter, options, NullLogger<LeagueScrapingService>.Instance);
+        var cronometro = System.Diagnostics.Stopwatch.StartNew();
+
+        // Act
+        ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
+        cronometro.Stop();
+
+        // Assert: 2 pausas de al menos 100 ms cada una y scroll de lectura en cada partido.
+        Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
+        Assert.True(cronometro.ElapsedMilliseconds >= 200,
+            $"Tiempo transcurrido insuficiente para 2 pausas de partido: {cronometro.ElapsedMilliseconds} ms");
+        Assert.True(driver.ExecutedScripts.Count(s => s.Contains("scrollBy")) >= 2,
+            $"Se esperaban al menos 2 scrolls, hubo: {driver.ExecutedScripts.Count(s => s.Contains("scrollBy"))}");
     }
 
     [Fact]

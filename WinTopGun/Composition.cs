@@ -47,6 +47,8 @@ public static class Composition
             ?? ScrapingOptions.DefaultDebuggerAddress,
         HumanPauseMinMilliseconds = ReadIntSetting(ScrapingOptions.HumanPauseMinKey, ScrapingOptions.DefaultHumanPauseMinMs),
         HumanPauseMaxMilliseconds = ReadIntSetting(ScrapingOptions.HumanPauseMaxKey, ScrapingOptions.DefaultHumanPauseMaxMs),
+        MatchPauseMinMilliseconds = ReadIntSetting(ScrapingOptions.MatchPauseMinKey, ScrapingOptions.DefaultMatchPauseMinMs),
+        MatchPauseMaxMilliseconds = ReadIntSetting(ScrapingOptions.MatchPauseMaxKey, ScrapingOptions.DefaultMatchPauseMaxMs),
     };
 
     private static int ReadIntSetting(string key, int fallback) =>

@@ -467,7 +467,10 @@ public sealed class LeagueScrapingService : IScrapingService
 
             driver.Navigate().GoToUrl(matchUrl);
             WaitForPageComplete(driver, wait);
-            PauseToSimulateHumanNavigation(cancellationToken);
+
+            // Simula un usuario revisando el resultado: pausa larga (3-8 s por defecto)
+            // y pequeños desplazamientos de página antes de extraer los datos.
+            SimularRevisionPartido(driver, cancellationToken);
 
             try
             {
@@ -587,19 +590,37 @@ public sealed class LeagueScrapingService : IScrapingService
     /// para simular la navegación de una persona. La espera se realiza en fragmentos para
     /// responder con rapidez a una solicitud de cancelación.
     /// </summary>
-    private void PauseToSimulateHumanNavigation(CancellationToken cancellationToken)
-    {
-        int min = _options.HumanPauseMinMilliseconds;
-        int max = _options.HumanPauseMaxMilliseconds;
+    private void PauseToSimulateHumanNavigation(CancellationToken cancellationToken) =>
+        PausaAleatoria(_options.HumanPauseMinMilliseconds, _options.HumanPauseMaxMilliseconds, cancellationToken);
 
-        if (max <= 0 || min > max)
+    /// <summary>
+    /// Simula la revisión del resultado de un partido antes de extraer sus datos:
+    /// pausa aleatoria (entre <see cref="ScrapingOptions.MatchPauseMinMilliseconds"/> y
+    /// <see cref="ScrapingOptions.MatchPauseMaxMilliseconds"/>) seguida de pequeños
+    /// desplazamientos de página con pausas breves de "lectura".
+    /// </summary>
+    private void SimularRevisionPartido(IWebDriver driver, CancellationToken cancellationToken)
+    {
+        PausaAleatoria(_options.MatchPauseMinMilliseconds, _options.MatchPauseMaxMilliseconds, cancellationToken);
+        SimularScrollDeLectura(driver, cancellationToken);
+    }
+
+    /// <summary>Pausa un intervalo aleatorio entre <paramref name="minMs"/> y <paramref name="maxMs"/> (0 o negativo desactiva la pausa).</summary>
+    private void PausaAleatoria(int minMs, int maxMs, CancellationToken cancellationToken)
+    {
+        if (maxMs <= 0 || minMs > maxMs)
         {
             return;
         }
 
-        int delayMs = Random.Shared.Next(min, max + 1);
+        int delayMs = Random.Shared.Next(minMs, maxMs + 1);
         _logger.LogInformation("Pausa de {Seconds:N1} s para simular navegación humana", delayMs / 1000.0);
+        DormirConCancelacion(delayMs, cancellationToken);
+    }
 
+    /// <summary>Espera en fragmentos de 200 ms para responder con rapidez a una solicitud de cancelación.</summary>
+    private static void DormirConCancelacion(int delayMs, CancellationToken cancellationToken)
+    {
         const int SliceMs = 200;
         int remaining = delayMs;
         while (remaining > 0)
@@ -608,6 +629,24 @@ public sealed class LeagueScrapingService : IScrapingService
             int slice = Math.Min(SliceMs, remaining);
             Thread.Sleep(slice);
             remaining -= slice;
+        }
+    }
+
+    /// <summary>
+    /// Ejecuta pequeños desplazamientos de página (200-600 px, 3 a 5 veces) con
+    /// pausas breves entre cada uno, simulando la lectura del resultado del partido.
+    /// </summary>
+    private static void SimularScrollDeLectura(IWebDriver driver, CancellationToken cancellationToken)
+    {
+        var executor = (IJavaScriptExecutor)driver;
+        int desplazamientos = Random.Shared.Next(3, 6);
+
+        for (int i = 0; i < desplazamientos; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int pixeles = Random.Shared.Next(200, 600);
+            executor.ExecuteScript($"window.scrollBy(0, {pixeles});");
+            DormirConCancelacion(Random.Shared.Next(200, 500), cancellationToken);
         }
     }
 

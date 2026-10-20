@@ -52,6 +52,9 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Cantidad de veces que se navegó hacia atrás.</summary>
     public int NavigationsBack { get; private set; }
 
+    /// <summary>Scripts ejecutados mediante ExecuteScript, en orden (p. ej. scrolls).</summary>
+    public List<string> ExecutedScripts { get; } = [];
+
     /// <summary>Indica si se invocó Quit().</summary>
     public bool QuitCalled { get; private set; }
 
@@ -75,8 +78,11 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
 
     public void Quit() => QuitCalled = true;
 
-    public object? ExecuteScript(string script, params object?[]? args) =>
-        script.Contains("readyState") ? ReadyState : null;
+    public object? ExecuteScript(string script, params object?[]? args)
+    {
+        ExecutedScripts.Add(script);
+        return script.Contains("readyState") ? ReadyState : null;
+    }
 
     public object? ExecuteScript(PinnedScript script, params object?[]? args) =>
         ExecuteScript(script.Source, args);
