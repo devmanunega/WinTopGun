@@ -19,6 +19,18 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Enlaces de jugadores (href) visibles en la página de liga, en orden de aparición.</summary>
     public List<string> PlayerLinkHrefs { get; set; } = [];
 
+    /// <summary>Enlaces de equipos (href) en la primera tabla de la página de liga (proceso de partidos).</summary>
+    public List<string> TeamLinkHrefs { get; set; } = [];
+
+    /// <summary>Enlaces de reportes de partido (href) en las filas de 'matchlogs_for', uno por fila.</summary>
+    public List<string> MatchReportHrefs { get; set; } = [];
+
+    /// <summary>Elementos adicionales por id (p. ej. 'scorebox_meta', 'events_wrap') con su contenido de texto.</summary>
+    public Dictionary<string, string> ExtraElementsById { get; set; } = [];
+
+    /// <summary>Indica si la tabla 'matchlogs_for' es visible; falso para simular un timeout en la página del equipo.</summary>
+    public bool MatchLogsVisible { get; set; } = true;
+
     /// <summary>Tablas (id + contenido) visibles en la página de liga o de jugador.</summary>
     public List<(string Id, string Content)> Tables { get; set; } = [];
 
@@ -99,10 +111,23 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
         }
 
         // En Selenium 4.49, By.Id se materializa como selector CSS "#id".
-        if (by.Criteria is ['#', .. var tableId])
+        if (by.Criteria is ['#', .. var elementId])
         {
-            return _tablesById.TryGetValue(tableId, out var element)
-                ? [element]
+            // Selenium escapa caracteres especiales (p. ej. "-" como "\-") al materializar By.Id como CSS.
+            elementId = elementId.Replace("\\-", "-");
+            // La tabla de partidos puede "desaparecer" del DOM para simular timeouts.
+            if (elementId == "matchlogs_for" && !MatchLogsVisible)
+            {
+                return [];
+            }
+
+            if (_tablesById.TryGetValue(elementId, out var element))
+            {
+                return [element];
+            }
+
+            return ExtraElementsById.TryGetValue(elementId, out var content)
+                ? [new FakeWebElement($"div {elementId}", elementId, innerText: content)]
                 : [];
         }
 
@@ -118,19 +143,26 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
         {
             if (!MissingTableIds.Contains(id))
             {
-                _tablesById[id] = new FakeWebElement($"tabla {id}", id, content);
+                _tablesById[id] = id == "matchlogs_for"
+                    ? new FakeWebElement($"tabla {id}", id, content).WithMatchLogRows(MatchReportHrefs)
+                    : new FakeWebElement($"tabla {id}", id, content);
             }
         }
     }
 
-    /// <summary>Crea los elementos de listado de tablas (todos, incluidos los stale).</summary>
+    /// <summary>Crea los elementos de listado de tablas (todos, incluidos los stale). La primera tabla expone los enlaces de equipos.</summary>
     private IEnumerable<IWebElement> ListTables() =>
-        Tables.Select(t => (IWebElement)new FakeWebElement($"tabla {t.Id}", t.Id));
+        Tables.Select((t, index) =>
+        {
+            var element = new FakeWebElement($"tabla {t.Id}", t.Id);
+            return index == 0
+                ? element.WithTeamLinks(TeamLinkHrefs)
+                : (IWebElement)element;
+        });
 
     private void RecordGoToUrl(string url) => VisitedUrls.Add(url);
 
     public void Dispose() { }
-
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private sealed class FakeNavigation(Action<string> onGoToUrl, Action onBack) : INavigation
@@ -154,5 +186,30 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
         public Task GoToUrlAsync(Uri url) { onGoToUrl(url.ToString()); return Task.CompletedTask; }
 
         public Task RefreshAsync() => Task.CompletedTask;
+    }
+}
+
+/// <summary>Extensión interna para construir elementos falsos con búsqueda relativa.</summary>
+internal static class FakeWebElementExtensions
+{
+    /// <summary>Configura el elemento para responder al selector de enlace de equipo (primer td de cada tr).</summary>
+    public static FakeWebElement WithTeamLinks(this FakeWebElement element, List<string> hrefs)
+    {
+        element.SetFindElementsHandler(criteria => criteria.Contains("td:first-child")
+            ? [.. hrefs.Select(href => (IWebElement)new FakeWebElement($"equipo {href}", href: href))]
+            : null);
+        return element;
+    }
+
+    /// <summary>Configura el elemento para responder como tabla 'matchlogs_for' con filas de reportes de partido.</summary>
+    public static FakeWebElement WithMatchLogRows(this FakeWebElement element, List<string> hrefs)
+    {
+        element.SetFindElementsHandler(criteria => criteria.Contains("#matchlogs_for") && criteria.EndsWith("tr", StringComparison.Ordinal)
+            ? [.. hrefs.Select(href => (IWebElement)new FakeWebElement("fila",
+                findElementsHandler: rowCriteria => rowCriteria.Contains("nth-last-child(2)")
+                    ? [new FakeWebElement("Match Report", href: href)]
+                    : null))]
+            : null);
+        return element;
     }
 }

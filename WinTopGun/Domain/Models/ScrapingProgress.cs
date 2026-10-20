@@ -32,4 +32,24 @@ public sealed record ScrapingProgress(
         int totalLinks,
         string linkText) =>
         new(currentLeague, totalLeagues, currentLink, totalLinks, $"Liga {currentLeague}/{totalLeagues} — Enlace {currentLink}/{totalLinks}: {linkText}");
+
+    /// <summary>Crea un reporte de avance a nivel de equipo del proceso de partidos.</summary>
+    public static ScrapingProgress ForTeamLink(
+        int currentLeague,
+        int totalLeagues,
+        int currentTeam,
+        int totalTeams,
+        string teamName) =>
+        new(currentLeague, totalLeagues, currentTeam, totalTeams, $"Liga {currentLeague}/{totalLeagues} — Equipo {currentTeam}/{totalTeams}: {teamName}");
+
+    /// <summary>Crea un reporte de avance a nivel de partido del proceso de partidos.</summary>
+    public static ScrapingProgress ForMatchLink(
+        int currentLeague,
+        int totalLeagues,
+        int currentTeam,
+        int totalTeams,
+        int currentMatch,
+        int totalMatches,
+        string matchText) =>
+        new(currentLeague, totalLeagues, currentMatch, totalMatches, $"Liga {currentLeague}/{totalLeagues} — Equipo {currentTeam}/{totalTeams} — Partido {currentMatch}/{totalMatches}: {matchText}");
 }

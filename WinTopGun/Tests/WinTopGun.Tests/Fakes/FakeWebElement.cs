@@ -10,8 +10,11 @@ internal sealed class FakeWebElement(
     string text,
     string? id = null,
     string? innerText = null,
-    string? href = null) : IWebElement
+    string? href = null,
+    Func<string, ReadOnlyCollection<IWebElement>?>? findElementsHandler = null) : IWebElement
 {
+    private Func<string, ReadOnlyCollection<IWebElement>?>? _findElementsHandler = findElementsHandler;
+
     public int Clicks { get; private set; }
 
     public string Text => text;
@@ -52,7 +55,19 @@ internal sealed class FakeWebElement(
 
     public ISearchContext GetShadowRoot() => throw new NotImplementedException();
 
-    public IWebElement FindElement(By by) => throw new NoSuchElementException();
+    public IWebElement FindElement(By by)
+    {
+        var elements = FindElements(by);
+        return elements.Count > 0 ? elements[0] : throw new NoSuchElementException($"No match: {by}");
+    }
 
-    public ReadOnlyCollection<IWebElement> FindElements(By by) => [];
+    public ReadOnlyCollection<IWebElement> FindElements(By by)
+    {
+        var result = _findElementsHandler?.Invoke(by.Criteria);
+        return result ?? [];
+    }
+
+    /// <summary>Configura la búsqueda relativa del elemento (para pruebas del proceso de partidos).</summary>
+    public void SetFindElementsHandler(Func<string, ReadOnlyCollection<IWebElement>?> handler) =>
+        _findElementsHandler = handler;
 }

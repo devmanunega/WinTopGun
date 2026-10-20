@@ -39,6 +39,7 @@ namespace WinTopGun
             lblEstado = new Label();
             progressBarExtraccion = new ProgressBar();
             btnExtractPlayers = new Button();
+            btnExtractPartidos = new Button();
             menuStrip1.SuspendLayout();
             flowLayoutPanel1.SuspendLayout();
             panelEstado.SuspendLayout();
@@ -78,6 +79,7 @@ namespace WinTopGun
             flowLayoutPanel1.Controls.Add(btnExtract);
             flowLayoutPanel1.Controls.Add(btnCancelar);
             flowLayoutPanel1.Controls.Add(btnExtractPlayers);
+            flowLayoutPanel1.Controls.Add(btnExtractPartidos);
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(0, 24);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
@@ -151,6 +153,19 @@ namespace WinTopGun
             btnExtractPlayers.UseVisualStyleBackColor = true;
             btnExtractPlayers.Click += btnExtractPlayers_Click;
             // 
+            // btnExtractPartidos
+            // 
+            btnExtractPartidos.Image = Properties.Resources.icons8_prismaticos_50;
+            btnExtractPartidos.Location = new Point(347, 3);
+            btnExtractPartidos.Name = "btnExtractPartidos";
+            btnExtractPartidos.Size = new Size(118, 57);
+            btnExtractPartidos.TabIndex = 3;
+            btnExtractPartidos.Text = "Partidos";
+            btnExtractPartidos.TextAlign = ContentAlignment.MiddleRight;
+            btnExtractPartidos.TextImageRelation = TextImageRelation.TextBeforeImage;
+            btnExtractPartidos.UseVisualStyleBackColor = true;
+            btnExtractPartidos.Click += btnExtractPartidos_Click;
+            // 
             // frmMain
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -183,5 +198,6 @@ namespace WinTopGun
         private ProgressBar progressBarExtraccion;
         private Label lblEstado;
         private Button btnExtractPlayers;
+        private Button btnExtractPartidos;
     }
 }

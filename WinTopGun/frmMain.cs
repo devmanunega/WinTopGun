@@ -50,6 +50,17 @@ public partial class frmMain : Form
                 servicio.ExtractPlayerTablesAsync(directorio, progreso, token));
 
     /// <summary>
+    /// Proceso de partidos: recorre las ligas, itera los equipos de su tabla de
+    /// clasificación, abre el reporte de cada partido y extrae las tablas con
+    /// <c>id</c> y los divs <c>scorebox_meta</c> y <c>events_wrap</c> de cada
+    /// página. Los archivos se guardan en la subcarpeta <c>Detalles_Partidos</c>.
+    /// </summary>
+    private async void btnExtractPartidos_Click(object sender, EventArgs e) =>
+        await EjecutarExtraccionAsync(
+            (servicio, directorio, progreso, token) =>
+                servicio.ExtractMatchDetailsAsync(directorio, progreso, token));
+
+    /// <summary>
     /// Orquestación compartida por ambos procesos de extracción: valida el directorio
     /// destino, ejecuta la operación con progreso y cancelación, y muestra el resultado.
     /// </summary>
@@ -150,6 +161,7 @@ public partial class frmMain : Form
     {
         btnExtract.Enabled = !enCurso;
         btnExtractPlayers.Enabled = !enCurso;
+        btnExtractPartidos.Enabled = !enCurso;
         btnCancelar.Enabled = enCurso;
 
         if (!enCurso)

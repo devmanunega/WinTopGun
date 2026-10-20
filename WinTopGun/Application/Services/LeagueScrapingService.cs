@@ -14,6 +14,9 @@ namespace WinTopGun.Application.Services;
 /// </summary>
 public sealed class LeagueScrapingService : IScrapingService
 {
+    /// <summary>Subcarpeta (dentro del directorio de salida) donde se guardan los detalles de partidos.</summary>
+    public const string MatchDetailsSubfolder = "Detalles_Partidos";
+
     private readonly IDriverFactory _driverFactory;
     private readonly ITableExporter _exporter;
     private readonly ScrapingOptions _options;
@@ -60,6 +63,22 @@ public sealed class LeagueScrapingService : IScrapingService
         // para no congelar la interfaz gráfica.
         return await Task.Run(
             () => ExtractCore(outputDirectory, progress, cancellationToken),
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<ScrapingResult> ExtractMatchDetailsAsync(
+        string outputDirectory,
+        IProgress<ScrapingProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Selenium es una API bloqueante: se ejecuta en un hilo de trabajo
+        // para no congelar la interfaz gráfica.
+        return await Task.Run(
+            () => ExtractMatchDetailsCore(outputDirectory, progress, cancellationToken),
             cancellationToken);
     }
 
@@ -257,6 +276,248 @@ public sealed class LeagueScrapingService : IScrapingService
             // Volver a la página de liga antes del siguiente enlace.
             driver.Navigate().Back();
             wait.Until(d => d.FindElements(Selectors.PlayerLinks).Count > 0);
+        }
+    }
+
+    /// <summary>
+    /// Núcleo del proceso de partidos: recorre las ligas, itera los equipos de la
+    /// primera tabla de cada liga (enlaces en el primer <c>td</c> de cada <c>tr</c>),
+    /// abre los reportes de partido (penúltimo <c>td</c> de la tabla
+    /// <c>matchlogs_for</c>) y extrae de cada página las tablas con <c>id</c> y los
+    /// divs <c>scorebox_meta</c> y <c>events_wrap</c>, guardándolos en
+    /// <c>&lt;outputDirectory&gt;/Detalles_Partidos</c>.
+    /// </summary>
+    private ScrapingResult ExtractMatchDetailsCore(
+        string outputDirectory,
+        IProgress<ScrapingProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var result = new ScrapingResult();
+        IWebDriver driver = _driverFactory.CreateDriver();
+
+        try
+        {
+            var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(_options.WaitTimeoutSeconds));
+
+            wait.Until(d => d.FindElements(Selectors.LeagueLinks).Count > 0);
+            int totalLeagues = driver.FindElements(Selectors.LeagueLinks).Count;
+            _logger.LogInformation("Extracción de partidos iniciada: {TotalLeagues} ligas detectadas", totalLeagues);
+
+            for (int i = 0; i < totalLeagues; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Re-localizar los enlaces en cada iteración (el DOM puede refrescarse).
+                IList<IWebElement> enlaces = driver.FindElements(Selectors.LeagueLinks);
+                IWebElement enlaceActual = enlaces[i];
+                string leagueName = enlaceActual.Text;
+
+                _logger.LogInformation("[Liga {Current}/{Total}] Abriendo enlace: {League}",
+                    i + 1, totalLeagues, leagueName);
+                progress?.Report(ScrapingProgress.ForLeague(i + 1, totalLeagues, leagueName));
+
+                enlaceActual.Click();
+
+                try
+                {
+                    ProcessLeagueMatches(driver, wait, outputDirectory, i + 1, totalLeagues, result, progress, cancellationToken);
+                    result.LeaguesProcessed++;
+                }
+                catch (WebDriverTimeoutException ex)
+                {
+                    _logger.LogWarning(ex, "Tiempo de espera agotado en la liga '{League}'", leagueName);
+                    result.Errors.Add($"Liga '{leagueName}': la página no cargó la tabla de equipos.");
+                }
+
+                // Volver a la página principal antes del siguiente ciclo.
+                driver.Navigate().Back();
+                wait.Until(d => d.FindElements(Selectors.LeagueLinks).Count > 0);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            result.WasCancelled = true;
+            _logger.LogInformation("Extracción de partidos cancelada por el usuario");
+        }
+        finally
+        {
+            driver.Quit();
+            _logger.LogInformation("Extracción de partidos finalizada: {Leagues} ligas, {Tables} tablas exportadas, {Errors} errores",
+                result.LeaguesProcessed, result.TablesExported, result.Errors.Count);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Itera los equipos de la tabla de clasificación de la liga actual (primer
+    /// <c>td</c> de cada <c>tr</c>), abre la página de cada uno y delega en
+    /// <see cref="ProcessTeamMatches"/> la extracción de sus partidos.
+    /// </summary>
+    private void ProcessLeagueMatches(
+        IWebDriver driver,
+        WebDriverWait wait,
+        string outputDirectory,
+        int currentLeague,
+        int totalLeagues,
+        ScrapingResult result,
+        IProgress<ScrapingProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        // Los detalles de partidos se guardan en la subcarpeta Detalles_Partidos.
+        string matchDirectory = Path.Combine(outputDirectory, MatchDetailsSubfolder);
+
+        // Primera tabla de la página de liga (clasificación); contiene la lista de equipos.
+        wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+        IWebElement tablaEquipos = driver.FindElements(Selectors.TablesWithId)[0];
+
+        // Recolectar los enlaces de equipos por adelantado: navegar por URL evita
+        // elementos obsoletos (stale) al regresar de cada página visitada.
+        List<(string Url, string Text)> equipos = [.. tablaEquipos
+            .FindElements(Selectors.FirstCellLink)
+            .Select(a => (Url: a.GetAttribute("href"), Text: a.Text))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Url))];
+
+        _logger.LogInformation("Liga {Current}/{Total}: {Count} equipos detectados",
+            currentLeague, totalLeagues, equipos.Count);
+
+        for (int e = 0; e < equipos.Count; e++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            (string teamUrl, string teamName) = equipos[e];
+            _logger.LogInformation("[Equipo {Current}/{Total}] Abriendo: {Team}", e + 1, equipos.Count, teamUrl);
+            progress?.Report(ScrapingProgress.ForTeamLink(currentLeague, totalLeagues, e + 1, equipos.Count, teamName));
+
+            driver.Navigate().GoToUrl(teamUrl);
+            WaitForPageComplete(driver, wait);
+            PauseToSimulateHumanNavigation(cancellationToken);
+
+            try
+            {
+                wait.Until(d => d.FindElements(Selectors.MatchLogsTable).Count > 0);
+            }
+            catch (WebDriverTimeoutException)
+            {
+                _logger.LogWarning("El equipo '{Team}' no cargó la tabla de partidos ('matchlogs_for')", teamUrl);
+                result.Errors.Add($"Liga {currentLeague}: el equipo '{teamName}' no cargó la tabla 'matchlogs_for'.");
+                continue;
+            }
+
+            ProcessTeamMatches(driver, wait, matchDirectory, currentLeague, totalLeagues, e + 1, equipos.Count, teamName, result, progress, cancellationToken);
+
+            // Volver a la página de liga antes del siguiente equipo.
+            driver.Navigate().Back();
+            WaitForPageComplete(driver, wait);
+            wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+        }
+    }
+
+    /// <summary>
+    /// Abre secuencialmente los reportes de partido del equipo actual (enlaces en
+    /// el penúltimo <c>td</c> de cada fila de <c>matchlogs_for</c>) y, en cada
+    /// página, extrae las tablas con <c>id</c> y los divs <c>scorebox_meta</c> y
+    /// <c>events_wrap</c>, exportándolos al directorio de detalles de partidos.
+    /// </summary>
+    private void ProcessTeamMatches(
+        IWebDriver driver,
+        WebDriverWait wait,
+        string matchDirectory,
+        int currentLeague,
+        int totalLeagues,
+        int currentTeam,
+        int totalTeams,
+        string teamName,
+        ScrapingResult result,
+        IProgress<ScrapingProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        IWebElement tablaPartidos = driver.FindElement(Selectors.MatchLogsTable);
+
+        // Recolectar los enlaces de partidos por adelantado (penúltimo td de cada fila).
+        List<(string Url, string Text)> partidos = [.. tablaPartidos
+            .FindElements(Selectors.MatchLogRows)
+            .Select(row => row.FindElements(Selectors.PenultimateCellLink).FirstOrDefault())
+            .Where(link => link is not null)
+            .Select(link => (Url: link!.GetAttribute("href"), Text: link.Text))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Url))];
+
+        _logger.LogInformation("Equipo '{Team}': {Count} partidos detectados", teamName, partidos.Count);
+
+        for (int m = 0; m < partidos.Count; m++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            (string matchUrl, string matchText) = partidos[m];
+            _logger.LogInformation("[Partido {Current}/{Total}] Abriendo: {Match}", m + 1, partidos.Count, matchUrl);
+            progress?.Report(ScrapingProgress.ForMatchLink(currentLeague, totalLeagues, currentTeam, totalTeams, m + 1, partidos.Count, matchText));
+
+            driver.Navigate().GoToUrl(matchUrl);
+            WaitForPageComplete(driver, wait);
+            PauseToSimulateHumanNavigation(cancellationToken);
+
+            try
+            {
+                wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+            }
+            catch (WebDriverTimeoutException)
+            {
+                _logger.LogWarning("La página del partido '{Url}' no cargó tablas con 'table[id]'", matchUrl);
+                result.Errors.Add($"Liga {currentLeague}: la página del partido '{matchText}' no cargó tablas con 'table[id]'.");
+                continue;
+            }
+
+            string pageSegment = GetPageSegment(driver);
+            ExtractTablesOnCurrentPage(driver, matchDirectory, pageSegment, currentLeague, totalLeagues, result, progress, cancellationToken);
+
+            // Elementos adicionales de la página de detalle del partido.
+            ExportElementContent(driver, matchDirectory, pageSegment, Selectors.ScoreboxMeta, "scorebox_meta", result, cancellationToken);
+            ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken);
+
+            // Volver a la página del equipo antes del siguiente partido.
+            driver.Navigate().Back();
+            WaitForPageComplete(driver, wait);
+            wait.Until(d => d.FindElements(Selectors.MatchLogsTable).Count > 0);
+        }
+    }
+
+    /// <summary>
+    /// Extrae el contenido de texto de un elemento (p. ej. los divs
+    /// <c>scorebox_meta</c> y <c>events_wrap</c>) y lo exporta con el mismo
+    /// mecanismo usado para las tablas.
+    /// </summary>
+    private void ExportElementContent(
+        IWebDriver driver,
+        string outputDirectory,
+        string pageSegment,
+        By locator,
+        string elementId,
+        ScrapingResult result,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            IWebElement element = driver.FindElement(locator);
+            string content = element.GetDomProperty("innerText")
+                ?? element.GetAttribute("innerText")
+                ?? string.Empty;
+
+            _exporter.ExportTableAsync(outputDirectory, pageSegment, elementId, content, cancellationToken)
+                .GetAwaiter()
+                .GetResult();
+
+            result.TablesExported++;
+            _logger.LogDebug("Elemento '{ElementId}' exportado desde '{Segment}'", elementId, pageSegment);
+        }
+        catch (NoSuchElementException)
+        {
+            _logger.LogWarning("El elemento '{ElementId}' no existe en la página '{Segment}'", elementId, pageSegment);
+            result.Errors.Add($"Partido '{pageSegment}': el elemento '{elementId}' no existe en la página.");
+        }
+        catch (StaleElementReferenceException)
+        {
+            _logger.LogWarning("Elemento obsoleto al procesar '{ElementId}' en '{Segment}'", elementId, pageSegment);
+            result.Errors.Add($"Partido '{pageSegment}': el elemento '{elementId}' quedó obsoleto (stale element).");
         }
     }
 
