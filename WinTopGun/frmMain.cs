@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using WinTopGun.Application.Interfaces;
+using WinTopGun.Application.Services;
 using WinTopGun.Domain.Models;
 using WinTopGun.UI.Forms.Opciones;
 
@@ -13,6 +14,7 @@ public partial class frmMain : Form
 {
     private readonly IScrapingService _scrapingService;
     private readonly ISettingsProvider _settingsProvider;
+    private readonly IMatchProgressRepositoryFactory _progressRepositoryFactory;
     private CancellationTokenSource? _cancelacion;
 
     /// <summary>Constructor usado por el diseñador y por <see cref="Program"/>.</summary>
@@ -26,6 +28,46 @@ public partial class frmMain : Form
         InitializeComponent();
         _scrapingService = services.GetRequiredService<IScrapingService>();
         _settingsProvider = services.GetRequiredService<ISettingsProvider>();
+        _progressRepositoryFactory = services.GetRequiredService<IMatchProgressRepositoryFactory>();
+    }
+
+    /// <summary>
+    /// Opciones → Reiniciar registro de partidos: elimina el registro de progreso
+    /// para que la próxima extracción reprocese todos los partidos.
+    /// </summary>
+    private void reiniciarRegistroPartidosToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        string outputDirectory = _settingsProvider.OutputDirectory;
+
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            MessageBox.Show(
+                "Primero configure el directorio de destino (Opciones → Directorio destino).",
+                "Directorio no configurado",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        var respuesta = MessageBox.Show(
+            "Se eliminará el registro de partidos procesados. La próxima extracción reprocesará todos los partidos (los archivos existentes se sobrescribirán).\n\n¿Desea continuar?",
+            "Reiniciar registro de partidos",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+
+        if (respuesta != DialogResult.Yes)
+        {
+            return;
+        }
+
+        string matchDetailsDirectory = Path.Combine(outputDirectory, LeagueScrapingService.MatchDetailsSubfolder);
+        _progressRepositoryFactory.Create(matchDetailsDirectory).Reset();
+
+        MessageBox.Show(
+            "Registro de partidos eliminado.",
+            "Operación completada",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
     }
 
     private void directorioDestinoToolStripMenuItem_Click(object sender, EventArgs e)
@@ -139,8 +181,12 @@ public partial class frmMain : Form
         }
         else if (resultado.Success)
         {
+            string omitidos = resultado.MatchesSkipped > 0
+                ? $" Se omitieron {resultado.MatchesSkipped} partido(s) ya procesados en ejecuciones anteriores."
+                : string.Empty;
+
             MessageBox.Show(
-                $"Extracción finalizada: {resultado.TablesExported} tablas exportadas de {resultado.LeaguesProcessed} ligas.",
+                $"Extracción finalizada: {resultado.TablesExported} tablas exportadas de {resultado.LeaguesProcessed} ligas.{omitidos}",
                 "Proceso completado",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);

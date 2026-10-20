@@ -20,17 +20,20 @@ public sealed class LeagueScrapingService : IScrapingService
     private readonly IDriverFactory _driverFactory;
     private readonly ITableExporter _exporter;
     private readonly ScrapingOptions _options;
+    private readonly IMatchProgressRepositoryFactory _progressRepositoryFactory;
     private readonly ILogger<LeagueScrapingService> _logger;
 
     public LeagueScrapingService(
         IDriverFactory driverFactory,
         ITableExporter exporter,
         ScrapingOptions options,
+        IMatchProgressRepositoryFactory progressRepositoryFactory,
         ILogger<LeagueScrapingService> logger)
     {
         _driverFactory = driverFactory;
         _exporter = exporter;
         _options = options;
+        _progressRepositoryFactory = progressRepositoryFactory;
         _logger = logger;
     }
 
@@ -293,6 +296,16 @@ public sealed class LeagueScrapingService : IScrapingService
         CancellationToken cancellationToken)
     {
         var result = new ScrapingResult();
+        string matchDirectory = Path.Combine(outputDirectory, MatchDetailsSubfolder);
+
+        // Registro de progreso: permite reanudar procesando solo los partidos pendientes.
+        IMatchProgressRepository progreso = _progressRepositoryFactory.Create(matchDirectory);
+        int yaProcesados = ContarPartidosCompletados(progreso.Load());
+        if (yaProcesados > 0)
+        {
+            _logger.LogInformation("Reanudando extracción de partidos: {Completed} partidos ya procesados; se continuarán los pendientes", yaProcesados);
+        }
+
         IWebDriver driver = _driverFactory.CreateDriver();
 
         try
@@ -320,7 +333,7 @@ public sealed class LeagueScrapingService : IScrapingService
 
                 try
                 {
-                    ProcessLeagueMatches(driver, wait, outputDirectory, i + 1, totalLeagues, result, progress, cancellationToken);
+                    ProcessLeagueMatches(driver, wait, matchDirectory, progreso, i + 1, totalLeagues, result, progress, cancellationToken);
                     result.LeaguesProcessed++;
                 }
                 catch (WebDriverTimeoutException ex)
@@ -342,12 +355,16 @@ public sealed class LeagueScrapingService : IScrapingService
         finally
         {
             driver.Quit();
-            _logger.LogInformation("Extracción de partidos finalizada: {Leagues} ligas, {Tables} tablas exportadas, {Errors} errores",
-                result.LeaguesProcessed, result.TablesExported, result.Errors.Count);
+            _logger.LogInformation("Extracción de partidos finalizada: {Leagues} ligas, {Tables} tablas exportadas, {Skipped} partidos omitidos (ya procesados), {Errors} errores",
+                result.LeaguesProcessed, result.TablesExported, result.MatchesSkipped, result.Errors.Count);
         }
 
         return result;
     }
+
+    /// <summary>Cuenta los partidos completados (sin errores) en el estado del registro.</summary>
+    private static int ContarPartidosCompletados(MatchProgressState estado) =>
+        estado.Teams.Values.Sum(equipo => equipo.Matches.Values.Count(p => p.Errors.Count == 0));
 
     /// <summary>Texto que identifica el enlace de un partido ya disputado.</summary>
     private const string MatchReportText = "Match Report";
@@ -367,7 +384,8 @@ public sealed class LeagueScrapingService : IScrapingService
     private void ProcessLeagueMatches(
         IWebDriver driver,
         WebDriverWait wait,
-        string outputDirectory,
+        string matchDirectory,
+        IMatchProgressRepository progreso,
         int currentLeague,
         int totalLeagues,
         ScrapingResult result,
@@ -375,7 +393,7 @@ public sealed class LeagueScrapingService : IScrapingService
         CancellationToken cancellationToken)
     {
         // Los detalles de partidos se guardan en la subcarpeta Detalles_Partidos.
-        string matchDirectory = Path.Combine(outputDirectory, MatchDetailsSubfolder);
+        // (matchDirectory ya viene resuelto desde ExtractMatchDetailsCore)
 
         // Primera tabla de la página de liga (clasificación); contiene la lista de equipos.
         wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
@@ -411,7 +429,7 @@ public sealed class LeagueScrapingService : IScrapingService
                 continue;
             }
 
-            ProcessTeamMatches(driver, wait, matchDirectory, currentLeague, totalLeagues, e + 1, equipos.Count, teamName, result, progress, cancellationToken);
+            ProcessTeamMatches(driver, wait, matchDirectory, progreso, teamUrl, currentLeague, totalLeagues, e + 1, equipos.Count, teamName, result, progress, cancellationToken);
 
             // Volver a la página de liga antes del siguiente equipo.
             driver.Navigate().Back();
@@ -430,6 +448,8 @@ public sealed class LeagueScrapingService : IScrapingService
         IWebDriver driver,
         WebDriverWait wait,
         string matchDirectory,
+        IMatchProgressRepository progreso,
+        string teamUrl,
         int currentLeague,
         int totalLeagues,
         int currentTeam,
@@ -457,13 +477,24 @@ public sealed class LeagueScrapingService : IScrapingService
         _logger.LogInformation("Equipo '{Team}': {Count} partidos disputados detectados (de {Rows} filas en matchlogs_for)",
             teamName, partidos.Count, tablaPartidos.FindElements(Selectors.MatchLogRows).Count);
 
-        for (int m = 0; m < partidos.Count; m++)
+        // Reanudación: solo se procesan partidos pendientes; los ya registrados
+        // exitosamente se omiten para no repetir trabajo.
+        List<(string Url, string Text)> pendientes = [.. partidos.Where(p => !progreso.IsProcessed(teamUrl, p.Url))];
+        int omitidos = partidos.Count - pendientes.Count;
+        if (omitidos > 0)
+        {
+            result.MatchesSkipped += omitidos;
+            _logger.LogInformation("Equipo '{Team}': se omiten {Skipped} partidos ya procesados; pendientes: {Pending}",
+                teamName, omitidos, pendientes.Count);
+        }
+
+        for (int m = 0; m < pendientes.Count; m++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            (string matchUrl, string matchText) = partidos[m];
-            _logger.LogInformation("[Partido {Current}/{Total}] Abriendo: {Match}", m + 1, partidos.Count, matchUrl);
-            progress?.Report(ScrapingProgress.ForMatchLink(currentLeague, totalLeagues, currentTeam, totalTeams, m + 1, partidos.Count, matchText));
+            (string matchUrl, string matchText) = pendientes[m];
+            _logger.LogInformation("[Partido {Current}/{Total}] Abriendo: {Match}", m + 1, pendientes.Count, matchUrl);
+            progress?.Report(ScrapingProgress.ForMatchLink(currentLeague, totalLeagues, currentTeam, totalTeams, m + 1, pendientes.Count, matchText));
 
             driver.Navigate().GoToUrl(matchUrl);
             WaitForPageComplete(driver, wait);
@@ -484,16 +515,55 @@ public sealed class LeagueScrapingService : IScrapingService
             }
 
             string pageSegment = GetPageSegment(driver);
+            int erroresAntes = result.Errors.Count;
+
             ExtractTablesOnCurrentPage(driver, matchDirectory, pageSegment, currentLeague, totalLeagues, result, progress, cancellationToken);
 
             // Elementos adicionales de la página de detalle del partido.
             ExportElementContent(driver, matchDirectory, pageSegment, Selectors.ScoreboxMeta, "scorebox_meta", result, cancellationToken);
             ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken);
 
+            // Registro de progreso: el partido se marca con sus incidencias; solo
+            // se considera procesado (y omitible) si la exportación fue limpia.
+            RegistrarResultadoPartido(progreso, teamUrl, teamName, matchUrl, pageSegment, [.. result.Errors.Skip(erroresAntes)]);
+
             // Volver a la página del equipo antes del siguiente partido.
             driver.Navigate().Back();
             WaitForPageComplete(driver, wait);
             wait.Until(d => d.FindElements(Selectors.MatchLogsTable).Count > 0);
+        }
+    }
+
+    /// <summary>
+    /// Registra el resultado de un partido en el registro de progreso. Un partido
+    /// con incidencias queda a modo de diagnóstico y se reintentará en la próxima
+    /// ejecución; uno limpio se considera procesado y omitible.
+    /// </summary>
+    private void RegistrarResultadoPartido(
+        IMatchProgressRepository progreso,
+        string teamUrl,
+        string teamName,
+        string matchUrl,
+        string segment,
+        List<string> erroresPartido)
+    {
+        progreso.MarkMatchProcessed(new MatchProgressRecord
+        {
+            TeamUrl = teamUrl,
+            TeamName = teamName,
+            MatchUrl = matchUrl,
+            Segment = segment,
+            Errors = erroresPartido,
+        });
+
+        if (erroresPartido.Count == 0)
+        {
+            _logger.LogDebug("Partido '{Match}' registrado como procesado", matchUrl);
+        }
+        else
+        {
+            _logger.LogWarning("El partido '{Match}' terminó con {Count} incidencia(s); se reintentará en la próxima ejecución",
+                matchUrl, erroresPartido.Count);
         }
     }
 

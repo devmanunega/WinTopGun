@@ -32,6 +32,7 @@ namespace WinTopGun
             archivoToolStripMenuItem = new ToolStripMenuItem();
             opcionesToolStripMenuItem = new ToolStripMenuItem();
             directorioDestinoToolStripMenuItem = new ToolStripMenuItem();
+            reiniciarRegistroPartidosToolStripMenuItem = new ToolStripMenuItem();
             flowLayoutPanel1 = new FlowLayoutPanel();
             btnExtract = new Button();
             btnCancelar = new Button();
@@ -62,7 +63,7 @@ namespace WinTopGun
             // 
             // opcionesToolStripMenuItem
             // 
-            opcionesToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { directorioDestinoToolStripMenuItem });
+            opcionesToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { directorioDestinoToolStripMenuItem, reiniciarRegistroPartidosToolStripMenuItem });
             opcionesToolStripMenuItem.Name = "opcionesToolStripMenuItem";
             opcionesToolStripMenuItem.Size = new Size(69, 20);
             opcionesToolStripMenuItem.Text = "Opciones";
@@ -73,6 +74,13 @@ namespace WinTopGun
             directorioDestinoToolStripMenuItem.Size = new Size(168, 22);
             directorioDestinoToolStripMenuItem.Text = "Directorio destino";
             directorioDestinoToolStripMenuItem.Click += directorioDestinoToolStripMenuItem_Click;
+            // 
+            // reiniciarRegistroPartidosToolStripMenuItem
+            // 
+            reiniciarRegistroPartidosToolStripMenuItem.Name = "reiniciarRegistroPartidosToolStripMenuItem";
+            reiniciarRegistroPartidosToolStripMenuItem.Size = new Size(280, 22);
+            reiniciarRegistroPartidosToolStripMenuItem.Text = "Reiniciar registro de partidos";
+            reiniciarRegistroPartidosToolStripMenuItem.Click += reiniciarRegistroPartidosToolStripMenuItem_Click;
             // 
             // flowLayoutPanel1
             // 
@@ -191,6 +199,7 @@ namespace WinTopGun
         private ToolStripMenuItem archivoToolStripMenuItem;
         private ToolStripMenuItem opcionesToolStripMenuItem;
         private ToolStripMenuItem directorioDestinoToolStripMenuItem;
+        private ToolStripMenuItem reiniciarRegistroPartidosToolStripMenuItem;
         private FlowLayoutPanel flowLayoutPanel1;
         private Button btnExtract;
         private Button btnCancelar;

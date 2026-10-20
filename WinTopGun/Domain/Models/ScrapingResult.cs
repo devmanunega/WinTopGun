@@ -11,6 +11,9 @@ public sealed class ScrapingResult
     /// <summary>Cantidad de tablas exportadas a disco.</summary>
     public int TablesExported { get; internal set; }
 
+    /// <summary>Cantidad de partidos omitidos por ya estar registrados como procesados (proceso de partidos).</summary>
+    public int MatchesSkipped { get; internal set; }
+
     /// <summary>Descripción de los errores no fatales encontrados durante la ejecución.</summary>
     public List<string> Errors { get; } = [];
 
