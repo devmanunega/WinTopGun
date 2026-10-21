@@ -24,17 +24,17 @@ public sealed class ScrapingOptions
     /// <summary>Clave de configuración para <see cref="MatchPauseMaxMilliseconds"/>.</summary>
     public const string MatchPauseMaxKey = "Scraping:MatchPauseMaxMs";
 
-    /// <summary>Valor por defecto del tiempo de espera.</summary>
-    public const int DefaultWaitTimeoutSeconds = 10;
+    /// <summary>Valor por defecto del tiempo de espera (1 minuto para la aparición de elementos).</summary>
+    public const int DefaultWaitTimeoutSeconds = 60;
 
     /// <summary>Valor por defecto de la dirección de depuración de Chrome.</summary>
     public const string DefaultDebuggerAddress = "localhost:9222";
 
-    /// <summary>Valor por defecto del límite inferior de la pausa humana (ms).</summary>
-    public const int DefaultHumanPauseMinMs = 2000;
+    /// <summary>Valor por defecto del límite inferior de la pausa humana (ms): 10 segundos antes de hacer click.</summary>
+    public const int DefaultHumanPauseMinMs = 10000;
 
-    /// <summary>Valor por defecto del límite superior de la pausa humana (ms).</summary>
-    public const int DefaultHumanPauseMaxMs = 5000;
+    /// <summary>Valor por defecto del límite superior de la pausa humana (ms): 20 segundos antes de hacer click.</summary>
+    public const int DefaultHumanPauseMaxMs = 20000;
 
     /// <summary>Valor por defecto del límite inferior de la pausa en páginas de partido (ms).</summary>
     public const int DefaultMatchPauseMinMs = 3000;

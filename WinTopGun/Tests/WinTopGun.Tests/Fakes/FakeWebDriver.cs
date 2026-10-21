@@ -34,6 +34,15 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Indica si la tabla 'matchlogs_for' es visible; falso para simular un timeout en la página del equipo.</summary>
     public bool MatchLogsVisible { get; set; } = true;
 
+    /// <summary>Altura total simulada de la página (px) para los scripts de scroll.</summary>
+    public int ScrollHeight { get; set; } = 2500;
+
+    /// <summary>Altura simulada del viewport (px) para los scripts de scroll.</summary>
+    public int InnerHeight { get; set; } = 800;
+
+    /// <summary>Posición vertical simulada del scroll (px).</summary>
+    public int CurrentScrollY { get; private set; }
+
     /// <summary>Tablas (id + contenido) visibles en la página de liga o de jugador.</summary>
     public List<(string Id, string Content)> Tables { get; set; } = [];
 
@@ -70,7 +79,7 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
 
     public IOptions Manage() => throw new NotImplementedException();
 
-    public INavigation Navigate() => new FakeNavigation(RecordGoToUrl, () => NavigationsBack++);
+    public INavigation Navigate() => new FakeNavigation(RecordGoToUrl, OnNavigatedBack);
 
     public ITargetLocator SwitchTo() => throw new NotImplementedException();
 
@@ -81,7 +90,36 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     public object? ExecuteScript(string script, params object?[]? args)
     {
         ExecutedScripts.Add(script);
-        return script.Contains("readyState") ? ReadyState : null;
+
+        if (script.Contains("readyState"))
+        {
+            return ReadyState;
+        }
+
+        // Simular la geometría de scroll de una página real.
+        if (script.Contains("scrollY + window.innerHeight"))
+        {
+            int maxScrollY = Math.Max(ScrollHeight - InnerHeight, 0);
+            return CurrentScrollY >= maxScrollY;
+        }
+
+        if (script.StartsWith("window.scrollBy"))
+        {
+            int inicio = script.IndexOf('(') + 1;
+            int fin = script.IndexOf(')');
+            string[] partes = script[inicio..fin].Split(',');
+            int pixeles = int.Parse(partes[1].Trim());
+            CurrentScrollY = Math.Min(CurrentScrollY + pixeles, Math.Max(ScrollHeight - InnerHeight, 0));
+            return null;
+        }
+
+        if (script.StartsWith("window.scrollTo"))
+        {
+            CurrentScrollY = Math.Max(ScrollHeight - InnerHeight, 0);
+            return null;
+        }
+
+        return null;
     }
 
     public object? ExecuteScript(PinnedScript script, params object?[]? args) =>
@@ -169,7 +207,17 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
                 : (IWebElement)element;
         });
 
-    private void RecordGoToUrl(string url) => VisitedUrls.Add(url);
+    private void RecordGoToUrl(string url)
+    {
+        VisitedUrls.Add(url);
+        CurrentScrollY = 0; // Una página nueva comienza en la parte superior.
+    }
+
+    private void OnNavigatedBack()
+    {
+        NavigationsBack++;
+        CurrentScrollY = 0; // Al volver atrás la página se recarga desde el principio.
+    }
 
     public void Dispose() { }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

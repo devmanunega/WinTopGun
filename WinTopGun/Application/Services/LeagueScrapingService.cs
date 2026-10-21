@@ -702,21 +702,37 @@ public sealed class LeagueScrapingService : IScrapingService
     }
 
     /// <summary>
-    /// Ejecuta pequeños desplazamientos de página (200-600 px, 3 a 5 veces) con
-    /// pausas breves entre cada uno, simulando la lectura del resultado del partido.
+    /// Ejecuta pequeños desplazamientos de página (200-600 px) con pausas breves
+    /// entre cada uno, simulando la lectura del resultado del partido. El bucle se
+    /// repite hasta alcanzar el final de la página, y se garantiza la llegada al
+    /// fondo con un último desplazamiento absoluto.
     /// </summary>
     private static void SimularScrollDeLectura(IWebDriver driver, CancellationToken cancellationToken)
     {
         var executor = (IJavaScriptExecutor)driver;
-        int desplazamientos = Random.Shared.Next(3, 6);
+        const int MaximosDesplazamientos = 100; // Salvaguarda frente a páginas de longitud anómala.
 
-        for (int i = 0; i < desplazamientos; i++)
+        for (int i = 0; i < MaximosDesplazamientos; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // ¿Se alcanzó el final de la página?
+            bool alFinal = Convert.ToBoolean(executor.ExecuteScript(
+                "return window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;"));
+
+            if (alFinal)
+            {
+                return;
+            }
+
             int pixeles = Random.Shared.Next(200, 600);
             executor.ExecuteScript($"window.scrollBy(0, {pixeles});");
             DormirConCancelacion(Random.Shared.Next(200, 500), cancellationToken);
         }
+
+        // Refuerzo: garantizar la llegada al fondo aunque el paso aleatorio
+        // haya quedado a pocos píxeles del final (p. ej. por zoom o DPI).
+        executor.ExecuteScript("window.scrollTo(0, document.documentElement.scrollHeight);");
     }
 
     /// <summary>
