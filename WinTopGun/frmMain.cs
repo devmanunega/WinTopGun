@@ -14,7 +14,7 @@ public partial class frmMain : Form
 {
     private readonly IScrapingService _scrapingService;
     private readonly ISettingsProvider _settingsProvider;
-    private readonly IMatchProgressRepositoryFactory _progressRepositoryFactory;
+    private readonly IMatchLinkRegistry _matchLinkRegistry;
     private CancellationTokenSource? _cancelacion;
 
     /// <summary>Constructor usado por el diseñador y por <see cref="Program"/>.</summary>
@@ -28,12 +28,12 @@ public partial class frmMain : Form
         InitializeComponent();
         _scrapingService = services.GetRequiredService<IScrapingService>();
         _settingsProvider = services.GetRequiredService<ISettingsProvider>();
-        _progressRepositoryFactory = services.GetRequiredService<IMatchProgressRepositoryFactory>();
+        _matchLinkRegistry = services.GetRequiredService<IMatchLinkRegistry>();
     }
 
     /// <summary>
-    /// Opciones → Reiniciar registro de partidos: elimina el registro de progreso
-    /// para que la próxima extracción reprocese todos los partidos.
+    /// Opciones → Reiniciar registro de partidos: elimina el registro de enlaces
+    /// procesados para que la próxima extracción reprocese todos los partidos.
     /// </summary>
     private void reiniciarRegistroPartidosToolStripMenuItem_Click(object sender, EventArgs e)
     {
@@ -61,7 +61,8 @@ public partial class frmMain : Form
         }
 
         string matchDetailsDirectory = Path.Combine(outputDirectory, LeagueScrapingService.MatchDetailsSubfolder);
-        _progressRepositoryFactory.Create(matchDetailsDirectory).Reset();
+        _matchLinkRegistry.Initialize(matchDetailsDirectory);
+        _matchLinkRegistry.Reset();
 
         MessageBox.Show(
             "Registro de partidos eliminado.",
@@ -92,10 +93,12 @@ public partial class frmMain : Form
                 servicio.ExtractPlayerTablesAsync(directorio, progreso, token));
 
     /// <summary>
-    /// Proceso de partidos: recorre las ligas, itera los equipos de su tabla de
-    /// clasificación, abre el reporte de cada partido y extrae las tablas con
-    /// <c>id</c> y los divs <c>scorebox_meta</c> y <c>events_wrap</c> de cada
-    /// página. Los archivos se guardan en la subcarpeta <c>Detalles_Partidos</c>.
+    /// Proceso de partidos: recorre las ligas, recolecta de la tabla de posiciones
+    /// (primera tabla con <c>id</c>) los enlaces "Match Report" de cada equipo,
+    /// los identifica por hash en un registro persistente y abre solo los no
+    /// procesados. De cada página extrae las tablas con <c>id</c> y los divs
+    /// <c>scorebox_meta</c> y <c>events_wrap</c>, en la subcarpeta
+    /// <c>Detalles_Partidos</c>.
     /// </summary>
     private async void btnExtractPartidos_Click(object sender, EventArgs e) =>
         await EjecutarExtraccionAsync(

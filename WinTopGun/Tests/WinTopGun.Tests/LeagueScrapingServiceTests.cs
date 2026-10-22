@@ -18,11 +18,12 @@ public sealed class LeagueScrapingServiceTests
         FakeWebDriver driver,
         out FakeDriverFactory factory,
         out RecordingTableExporter exporter,
-        InMemoryMatchProgressRepositoryFactory? progressFactory = null)
+        FakeMatchLinkRegistry? registry = null,
+        ITableExporter? exportador = null)
     {
         factory = new FakeDriverFactory(driver);
-        exporter = new RecordingTableExporter();
-        progressFactory ??= new InMemoryMatchProgressRepositoryFactory();
+        exporter = (exportador as RecordingTableExporter) ?? new RecordingTableExporter();
+        registry ??= new FakeMatchLinkRegistry();
         var options = new ScrapingOptions
         {
             WaitTimeoutSeconds = 1,
@@ -34,9 +35,9 @@ public sealed class LeagueScrapingServiceTests
 
         return new LeagueScrapingService(
             factory,
-            exporter,
+            exportador ?? exporter,
+            registry,
             options,
-            progressFactory,
             NullLogger<LeagueScrapingService>.Instance);
     }
 
@@ -294,8 +295,8 @@ public sealed class LeagueScrapingServiceTests
         var service = new LeagueScrapingService(
             factory,
             exporter,
+            new FakeMatchLinkRegistry(),
             options,
-            new InMemoryMatchProgressRepositoryFactory(),
             NullLogger<LeagueScrapingService>.Instance);
         var cronometro = System.Diagnostics.Stopwatch.StartNew();
 
@@ -309,16 +310,22 @@ public sealed class LeagueScrapingServiceTests
             $"Tiempo transcurrido insuficiente para 4 pausas: {cronometro.ElapsedMilliseconds} ms");
     }
 
-    private static FakeWebDriver CreateDriverForMatches(int leagues = 1, int teams = 1, int matchesPerTeam = 2, List<string>? matchLinkTexts = null)
+    // ------------------------------------------------------------------
+    // Flujo de partidos (btnExtractPartidos): tabla de posiciones → página de
+    // cada equipo → enlaces "Match Report" (matchlogs_for) → hash → registro
+    // persistente → solo pendientes.
+    // ------------------------------------------------------------------
+
+    private static FakeWebDriver CreateDriverForMatches(int leagues = 1, int teams = 2, int matchesPerTeam = 2, List<string>? matchLinkTexts = null)
     {
         var driver = new FakeWebDriver
         {
-            LeagueNames = Enumerable.Range(1, leagues).Select(l => $"Liga {l}").ToList(),
+            LeagueNames = [.. Enumerable.Range(1, leagues).Select(l => $"Liga {l}")],
             Url = "https://sitio-de-prueba.test/liga/primeraliga",
-            TeamLinkHrefs = Enumerable.Range(1, teams)
-                .Select(t => $"https://sitio-de-prueba.test/equipos/equipo-{t}").ToList(),
-            MatchReportHrefs = Enumerable.Range(1, matchesPerTeam)
-                .Select(m => $"https://sitio-de-prueba.test/partidos/partido-{m}").ToList(),
+            StandingsRows = [.. Enumerable.Range(1, teams).Select(t => new FakeStandingsRow(
+                $"Equipo {t}",
+                $"https://sitio-de-prueba.test/equipos/equipo-{t}"))],
+            MatchReportHrefs = [.. Enumerable.Range(1, matchesPerTeam).Select(m => $"https://sitio-de-prueba.test/partidos/partido-{m}")],
             Tables =
             [
                 ("results2026-202791_overall", "clasificacion"),
@@ -339,8 +346,9 @@ public sealed class LeagueScrapingServiceTests
     [Fact]
     public async Task Partidos_HappyPath_ExportaTablasYElementosEnSubcarpeta()
     {
-        // Arrange
-        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 2);
+        // Arrange: 2 equipos; el fake comparte la tabla 'matchlogs_for' entre páginas,
+        // por lo que el equipo 2 encuentra los mismos partidos ya procesados por el 1.
+        var driver = CreateDriverForMatches(teams: 2, matchesPerTeam: 2);
         var service = CreateService(driver, out var factory, out var exporter);
         string expectedDirectory = Path.Combine(OutputDirectory, "Detalles_Partidos");
 
@@ -356,37 +364,19 @@ public sealed class LeagueScrapingServiceTests
         Assert.Equal(2, exporter.Exports.Count(e => e.TableId == "scorebox_meta"));
         Assert.Equal(2, exporter.Exports.Count(e => e.TableId == "events_wrap"));
 
-        // Navegación: equipo + 2 partidos visitados por URL; retornos: 2 (partido→equipo) + 1 (equipo→liga) + 1 (liga→principal).
-        Assert.Contains("https://sitio-de-prueba.test/equipos/equipo-1", driver.VisitedUrls);
-        Assert.Contains("https://sitio-de-prueba.test/partidos/partido-1", driver.VisitedUrls);
-        Assert.Contains("https://sitio-de-prueba.test/partidos/partido-2", driver.VisitedUrls);
-        Assert.Equal(4, driver.NavigationsBack);
+        // Navegación: 2 páginas de equipo + 2 páginas de partido (cada partido se
+        // abre una sola vez aunque dos equipos lo referencien: desduplicación por hash).
+        Assert.Equal(2, driver.VisitedUrls.Count(u => u.Contains("/equipos/")));
+        Assert.Equal(2, driver.VisitedUrls.Count(u => u.Contains("/partidos/")));
+        Assert.Equal(5, driver.NavigationsBack); // 2 (partido→equipo) + 2 (equipo→liga) + 1 (liga→principal)
+        Assert.Equal(2, resultado.MatchesSkipped);
         Assert.True(driver.QuitCalled);
-    }
-
-    [Fact]
-    public async Task Partidos_MultiplesEquipos_VisitaTodosLosEquipos()
-    {
-        // Arrange
-        var driver = CreateDriverForMatches(teams: 3, matchesPerTeam: 1);
-        var service = CreateService(driver, out _, out var exporter);
-
-        // Act
-        ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
-
-        // Assert: 3 equipos × (2 tablas/partido... 3 tablas con id + 2 divs = 5) = 15 exportaciones.
-        Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
-        Assert.Equal(3, exporter.Exports.Count(e => e.TableId == "scorebox_meta"));
-        for (int t = 1; t <= 3; t++)
-        {
-            Assert.Contains($"https://sitio-de-prueba.test/equipos/equipo-{t}", driver.VisitedUrls);
-        }
     }
 
     [Fact]
     public async Task Partidos_SoloProcesaPartidosConMatchReport()
     {
-        // Arrange: 3 filas en matchlogs_for; la tercera es un partido pendiente sin reporte.
+        // Arrange: la tabla del equipo tiene 3 filas; la tercera es un partido pendiente sin reporte.
         var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 3, matchLinkTexts: ["Match Report", "Match Report", ""]);
         var service = CreateService(driver, out _, out var exporter);
 
@@ -408,7 +398,7 @@ public sealed class LeagueScrapingServiceTests
         // Arrange: pausa de partido reducida (100-150 ms) pero verificable; 2 partidos = 2 pausas.
         var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 2);
         var factory = new FakeDriverFactory(driver);
-        var exporter = new RecordingTableExporter();
+        var registry = new FakeMatchLinkRegistry();
         var options = new ScrapingOptions
         {
             WaitTimeoutSeconds = 1,
@@ -417,7 +407,12 @@ public sealed class LeagueScrapingServiceTests
             MatchPauseMinMilliseconds = 100,
             MatchPauseMaxMilliseconds = 150,
         };
-        var service = new LeagueScrapingService(factory, exporter, options, new InMemoryMatchProgressRepositoryFactory(), NullLogger<LeagueScrapingService>.Instance);
+        var service = new LeagueScrapingService(
+            factory,
+            new RecordingTableExporter(),
+            registry,
+            options,
+            NullLogger<LeagueScrapingService>.Instance);
         var cronometro = System.Diagnostics.Stopwatch.StartNew();
 
         // Act
@@ -433,53 +428,98 @@ public sealed class LeagueScrapingServiceTests
     }
 
     [Fact]
-    public async Task Partidos_ReanudaProceso_SoloPartidosPendientes()
+    public async Task Partidos_ReanudaProceso_SoloEnlacesPendientes()
     {
-        // Arrange: 3 partidos disputados; partido-1 y partido-2 ya procesados en ejecución previa.
-        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 3);
-        var progressFactory = new InMemoryMatchProgressRepositoryFactory();
-        string teamUrl = "https://sitio-de-prueba.test/equipos/equipo-1";
-        foreach (int i in new[] { 1, 2 })
-        {
-            progressFactory.Repository.MarkMatchProcessed(
-                teamUrl, "Equipo de prueba", $"https://sitio-de-prueba.test/partidos/partido-{i}");
-        }
-        var service = CreateService(driver, out _, out var exporter, progressFactory);
+        // Arrange: 2 equipos × 2 partidos; el partido-1 ya fue procesado en una
+        // ejecución previa (ejemplo ideal 1: se identifican 4 enlaces, 3 ya constan).
+        var driver = CreateDriverForMatches(teams: 2, matchesPerTeam: 2);
+        var registry = new FakeMatchLinkRegistry();
+        string partido1 = "https://sitio-de-prueba.test/partidos/partido-1";
+        registry.MarkProcessed(new MatchLinkTarget(
+            MatchIdExtractor.ExtractId(partido1), partido1, "Equipo previo", RowIndex: 0));
+        var service = CreateService(driver, out _, out var exporter, registry);
 
         // Act
         ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
 
-        // Assert: solo partido-3 se visita y exporta (3 tablas + 2 divs = 5).
+        // Assert: el equipo 1 procesa solo partido-2; el equipo 2 omite ambos.
         Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
-        Assert.Equal(2, resultado.MatchesSkipped);
-        Assert.Equal(5, exporter.Exports.Count);
-        Assert.Contains("https://sitio-de-prueba.test/partidos/partido-3", driver.VisitedUrls);
-        Assert.DoesNotContain(driver.VisitedUrls, u => u.Contains("partido-1"));
-        Assert.DoesNotContain(driver.VisitedUrls, u => u.Contains("partido-2"));
+        Assert.Equal(3, resultado.MatchesSkipped);
+        Assert.Equal(5, exporter.Exports.Count); // 1 partido × (3 tablas + 2 divs)
+        Assert.Single(driver.VisitedUrls.Where(u => u.Contains("/partidos/") && u.Contains("partido-2")));
+        Assert.DoesNotContain(driver.VisitedUrls, u => u.Contains("/partidos/") && u.Contains("partido-1"));
+        Assert.Equal(2, registry.ProcessedCount); // 1 previo + 1 nuevo
     }
 
     [Fact]
-    public async Task Partidos_EquipoCompleto_OmiteTodosSusPartidos()
+    public async Task Partidos_TodosProcesados_NoAbreNingunPartido()
     {
-        // Arrange: todos los partidos del equipo ya procesados.
-        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 2);
-        var progressFactory = new InMemoryMatchProgressRepositoryFactory();
-        string teamUrl = "https://sitio-de-prueba.test/equipos/equipo-1";
-        foreach (int i in new[] { 1, 2 })
+        // Arrange (ejemplo ideal 2): todos los enlaces ya aparecen como procesados.
+        var driver = CreateDriverForMatches(teams: 2, matchesPerTeam: 2);
+        var registry = new FakeMatchLinkRegistry();
+        foreach (string href in driver.MatchReportHrefs)
         {
-            progressFactory.Repository.MarkMatchProcessed(
-                teamUrl, "Equipo de prueba", $"https://sitio-de-prueba.test/partidos/partido-{i}");
+            registry.MarkProcessed(new MatchLinkTarget(
+                MatchIdExtractor.ExtractId(href), href, "Equipo previo", RowIndex: 0));
         }
-        var service = CreateService(driver, out _, out var exporter, progressFactory);
+        var service = CreateService(driver, out _, out var exporter, registry);
 
         // Act
         ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
 
-        // Assert: no se navega a ningún partido y no hay exportaciones.
+        // Assert: no se navega a ningún partido y no hay exportaciones; se continúa
+        // con el siguiente equipo (las páginas de equipo sí se recorren).
         Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
-        Assert.Equal(2, resultado.MatchesSkipped);
+        Assert.Equal(4, resultado.MatchesSkipped);
         Assert.Empty(exporter.Exports);
         Assert.DoesNotContain(driver.VisitedUrls, u => u.Contains("/partidos/"));
+        Assert.Equal(2, driver.VisitedUrls.Count(u => u.Contains("/equipos/")));
+    }
+
+    [Fact]
+    public async Task Partidos_DosEjecucionesSeguidas_LaSegundaNoProcesaNada()
+    {
+        // Criterio de aceptación (2.4): ejecutar el proceso dos veces seguidas
+        // sobre el mismo equipo resulta en cero partidos procesados en la segunda.
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 3);
+        var registry = new FakeMatchLinkRegistry();
+        var service = CreateService(driver, out _, out var exporter, registry);
+
+        await service.ExtractMatchDetailsAsync(OutputDirectory);
+        int exportacionesPrimera = exporter.Exports.Count;
+        int visitasPartidosPrimera = driver.VisitedUrls.Count(u => u.Contains("/partidos/"));
+
+        ScrapingResult segunda = await service.ExtractMatchDetailsAsync(OutputDirectory);
+
+        Assert.Equal(3, segunda.MatchesSkipped);
+        Assert.Equal(exportacionesPrimera, exporter.Exports.Count); // sin nuevas exportaciones
+        Assert.Equal(visitasPartidosPrimera, driver.VisitedUrls.Count(u => u.Contains("/partidos/")));
+        Assert.True(segunda.Success, string.Join(" | ", segunda.Errors));
+    }
+
+    [Fact]
+    public async Task Partidos_Fallido_SeReintentaEnLaSiguienteEjecucion()
+    {
+        // Estado Failed: la primera ejecución falla (tabla con error); la segunda lo reintenta.
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 1);
+        driver.MissingTableIds.Add("tabla_partido");
+        driver.PrepareTables();
+        var registry = new FakeMatchLinkRegistry();
+        var service = CreateService(driver, out _, out var exporter, registry);
+
+        ScrapingResult primera = await service.ExtractMatchDetailsAsync(OutputDirectory);
+
+        Assert.False(primera.Success);
+        Assert.Equal(0, registry.ProcessedCount);
+        Assert.Equal(1, registry.MarkFailedCalls);
+
+        // Segunda ejecución: la tabla ya no falla y el partido se procesa.
+        driver.MissingTableIds.Clear();
+        driver.PrepareTables();
+        ScrapingResult segunda = await service.ExtractMatchDetailsAsync(OutputDirectory);
+
+        Assert.True(segunda.Success, string.Join(" | ", segunda.Errors));
+        Assert.Equal(1, registry.ProcessedCount);
     }
 
     [Fact]
@@ -489,15 +529,70 @@ public sealed class LeagueScrapingServiceTests
         var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 1);
         driver.MissingTableIds.Add("tabla_partido");
         driver.PrepareTables();
-        var progressFactory = new InMemoryMatchProgressRepositoryFactory();
-        var service = CreateService(driver, out _, out _, progressFactory);
+        var registry = new FakeMatchLinkRegistry();
+        var service = CreateService(driver, out _, out var exporter, registry);
 
         // Act
         ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
 
-        // Assert: el partido con errores NO se registra como procesado (se reintentará).
+        // Assert: el partido queda en estado Failed y NO como procesado (se reintentará).
         Assert.False(resultado.Success);
-        Assert.Empty(progressFactory.Repository.GetProcessedMatchUrls("https://sitio-de-prueba.test/equipos/equipo-1"));
+        Assert.Equal(0, registry.ProcessedCount);
+        Assert.Equal(1, registry.MarkFailedCalls);
+        Assert.Equal(4, exporter.Exports.Count); // 2 tablas con id restantes + scorebox_meta + events_wrap
+    }
+
+    [Fact]
+    public async Task Partidos_Interrupcion_ConservaProgresoYaRegistrado()
+    {
+        // Arrange: el primer partido se procesa por completo (3 tablas + scorebox_meta
+        // + events_wrap = 5 exportaciones); la primera exportación del segundo partido
+        // lanza IOException (interrupción simulada).
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 2);
+        var registry = new FakeMatchLinkRegistry();
+        var factory = new FakeDriverFactory(driver);
+        var options = new ScrapingOptions
+        {
+            WaitTimeoutSeconds = 1,
+            HumanPauseMinMilliseconds = 0,
+            HumanPauseMaxMilliseconds = 0,
+            MatchPauseMinMilliseconds = 0,
+            MatchPauseMaxMilliseconds = 0,
+        };
+        var service = new LeagueScrapingService(
+            factory,
+            new FailAfterExporter(maxSuccesses: 5),
+            registry,
+            options,
+            NullLogger<LeagueScrapingService>.Instance);
+
+        // Act
+        await Assert.ThrowsAsync<IOException>(() => service.ExtractMatchDetailsAsync(OutputDirectory));
+
+        // Assert: el partido completado quedó registrado; el driver se liberó.
+        Assert.Equal(1, registry.ProcessedCount);
+        Assert.Contains(registry.Records.Values, r => r.Url.Contains("partido-1") && r.Status == MatchLinkStatus.Processed);
+        Assert.True(driver.QuitCalled);
+    }
+
+    [Fact]
+    public async Task Partidos_LigaSinTablaPosiciones_ReportaErrorYContinua()
+    {
+        // Arrange
+        var driver = CreateDriverForMatches(leagues: 2, teams: 1, matchesPerTeam: 1);
+        driver.TablesVisible = false;
+        var service = CreateService(driver, out _, out var exporter);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
+
+        // Assert: ninguna liga carga la tabla de posiciones.
+        Assert.False(resultado.Success);
+        Assert.Equal(0, resultado.LeaguesProcessed);
+        Assert.Equal(2, resultado.Errors.Count);
+        Assert.Contains(resultado.Errors, e => e.Contains("tabla de posiciones"));
+        Assert.Empty(exporter.Exports);
+        Assert.True(driver.QuitCalled);
     }
 
     [Fact]
@@ -521,23 +616,40 @@ public sealed class LeagueScrapingServiceTests
     }
 
     [Fact]
-    public async Task Partidos_ElementosFaltantesEnPagina_ReportaErrorYContinua()
+    public async Task Partidos_ElementosOpcionalesFaltantes_NoImpidenRegistrarElPartido()
     {
-        // Arrange: la página del partido no contiene los divs scorebox_meta ni events_wrap.
+        // Arrange: la página del partido no contiene los divs scorebox_meta ni events_wrap
+        // (en FBref real scorebox_meta no existe); son complementarios y no bloquean el registro.
         var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 1);
         driver.ExtraElementsById.Clear();
-        var service = CreateService(driver, out _, out var exporter);
+        var registry = new FakeMatchLinkRegistry();
+        var service = CreateService(driver, out _, out var exporter, registry);
 
         // Act
         ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
 
-        // Assert: las tablas con id sí se exportan; los divs faltantes generan un error cada uno.
-        Assert.False(resultado.Success);
-        Assert.Equal(2, resultado.Errors.Count);
-        Assert.Contains(resultado.Errors, e => e.Contains("scorebox_meta"));
-        Assert.Contains(resultado.Errors, e => e.Contains("events_wrap"));
-        Assert.Equal(3, exporter.Exports.Count); // solo las 3 tablas con id del partido
+        // Assert: las tablas con id sí se exportan; el partido SÍ se registra como procesado.
+        Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
+        Assert.Empty(resultado.Errors);
+        Assert.Equal(3, exporter.Exports.Count); // las 3 tablas con id del partido
+        Assert.Equal(1, registry.ProcessedCount);
+    }
+
+    [Fact]
+    public async Task Partidos_Progreso_ReportaEquiposYEnlaces()
+    {
+        // Arrange
+        var driver = CreateDriverForMatches(teams: 2, matchesPerTeam: 1);
+        var service = CreateService(driver, out _, out _);
+        var progress = new RecordingProgress();
+
+        // Act
+        await service.ExtractMatchDetailsAsync(OutputDirectory, progress);
+
+        // Assert
+        Assert.Contains(progress.Reports, r => r is { CurrentLeague: 1, TotalLeagues: 1, CurrentTable: 0 });
+        Assert.Contains(progress.Reports, r => r.Message.Contains("Equipo 1/2"));
+        Assert.Contains(progress.Reports, r => r.Message.Contains("Equipo 2/2"));
+        Assert.Contains(progress.Reports, r => r.Message.Contains("Partido 1/1"));
     }
 }
-
-

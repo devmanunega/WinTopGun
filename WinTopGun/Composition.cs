@@ -31,7 +31,7 @@ public static class Composition
             .AddSingleton<ISettingsProvider, AppSettingsProvider>()
             .AddSingleton<IDriverFactory, ChromeDriverFactory>()
             .AddSingleton<ITableExporter, TextFileTableExporter>()
-            .AddSingleton<IMatchProgressRepositoryFactory, JsonMatchProgressRepositoryFactory>()
+            .AddSingleton<IMatchLinkRegistry, JsonMatchLinkRegistry>()
             .AddSingleton<IScrapingService, LeagueScrapingService>()
             .AddLogging(logging =>
             {

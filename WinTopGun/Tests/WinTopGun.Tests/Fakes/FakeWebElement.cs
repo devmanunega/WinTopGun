@@ -11,6 +11,7 @@ internal sealed class FakeWebElement(
     string? id = null,
     string? innerText = null,
     string? href = null,
+    string? dataRow = null,
     Func<string, ReadOnlyCollection<IWebElement>?>? findElementsHandler = null) : IWebElement
 {
     private Func<string, ReadOnlyCollection<IWebElement>?>? _findElementsHandler = findElementsHandler;
@@ -43,6 +44,7 @@ internal sealed class FakeWebElement(
     {
         "id" when id is not null => id,
         "href" when href is not null => href,
+        "data-row" when dataRow is not null => dataRow,
         _ => throw new NoSuchElementException($"Atributo '{attributeName}' no disponible."),
     };
 

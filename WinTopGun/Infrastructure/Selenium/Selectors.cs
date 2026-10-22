@@ -14,6 +14,9 @@ public static class Selectors
     /// <summary>Enlaces (p. ej. a páginas de jugadores) dentro de las secciones de contenido de una página de liga.</summary>
     public static readonly By PlayerLinks = By.CssSelector("#content .section_heading_text > ul > li > a");
 
+    /// <summary>Filas de la tabla de posiciones (un equipo por fila).</summary>
+    public static readonly By TableRows = By.XPath(".//tr");
+
     /// <summary>Tablas que poseen atributo <c>id</c>.</summary>
     public static readonly By TablesWithId = By.CssSelector("table[id]");
 
@@ -26,17 +29,23 @@ public static class Selectors
     /// <summary>Enlace de equipo alternativo: primer <c>td</c> de cada <c>tr</c> (la primera celda puede ser un <c>th</c> con la posición).</summary>
     public static readonly By FirstDataCellLink = By.CssSelector("td:first-of-type a");
 
-    /// <summary>Tabla de historial de partidos de un equipo (<c>matchlogs_for</c>).</summary>
+    /// <summary>Tabla de historial de partidos de un equipo (<c>matchlogs_for</c>), donde residen los enlaces "Match Report".</summary>
     public static readonly By MatchLogsTable = By.Id("matchlogs_for");
 
-    /// <summary>Filas de la tabla de historial de partidos.</summary>
-    public static readonly By MatchLogRows = By.CssSelector("#matchlogs_for tr");
+    /// <summary>
+    /// Filas de datos de la tabla de historial de partidos. El atributo
+    /// <c>data-row</c> identifica de forma estable cada fila (y su posición).
+    /// </summary>
+    public static readonly By MatchLogDataRows = By.XPath(".//tr[@data-row]");
 
-    /// <summary>Enlace del reporte del partido en su columna estándar (<c>data-stat="match_report"</c>).</summary>
-    public static readonly By MatchReportLink = By.CssSelector("td[data-stat='match_report'] a");
-
-    /// <summary>Enlace del reporte del partido: penúltimo <c>td</c> de cada fila (alternativa si la columna no usa <c>data-stat</c>).</summary>
-    public static readonly By PenultimateCellLink = By.CssSelector("td:nth-last-child(2) a");
+    /// <summary>
+    /// Enlace del reporte del partido dentro de una fila: celda estándar
+    /// (<c>data-stat="match_report"</c>) con texto exacto "Match Report". Combina
+    /// el atributo estable con la validación del texto y descarta filas sin
+    /// reporte (partidos futuros). Ver Ideas/Partidos.md — selector recomendado.
+    /// </summary>
+    public static readonly By MatchReportCellLink =
+        By.XPath(".//td[@data-stat='match_report']/a[normalize-space(text())='Match Report']");
 
     /// <summary>Div de metadatos del partido en la página de detalle.</summary>
     public static readonly By ScoreboxMeta = By.Id("scorebox_meta");

@@ -3,11 +3,16 @@ using OpenQA.Selenium;
 
 namespace WinTopGun.Tests.Fakes;
 
+/// <summary>Fila de la tabla de posiciones simulada (un equipo por fila).</summary>
+/// <param name="TeamName">Nombre visible del equipo.</param>
+/// <param name="TeamHref">Enlace del equipo (celda data-stat="team").</param>
+internal sealed record FakeStandingsRow(string TeamName, string TeamHref);
+
 /// <summary>
 /// Implementación mínima de <see cref="IWebDriver"/> que simula una página principal
-/// con N ligas, páginas de liga con enlaces de jugadores y páginas con M tablas con
-/// <c>id</c>. Permite ejercitar el algoritmo de <c>LeagueScrapingService</c> sin un
-/// navegador real.
+/// con N ligas, páginas de liga con tabla de posiciones (filas con enlaces "Match
+/// Report") y páginas de partido con tablas con <c>id</c>. Permite ejercitar el
+/// algoritmo de <c>LeagueScrapingService</c> sin un navegador real.
 /// </summary>
 internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
 {
@@ -19,8 +24,8 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Enlaces de jugadores (href) visibles en la página de liga, en orden de aparición.</summary>
     public List<string> PlayerLinkHrefs { get; set; } = [];
 
-    /// <summary>Enlaces de equipos (href) en la primera tabla de la página de liga (proceso de partidos).</summary>
-    public List<string> TeamLinkHrefs { get; set; } = [];
+    /// <summary>Filas de la tabla de posiciones de la página de liga (proceso de partidos).</summary>
+    public List<FakeStandingsRow> StandingsRows { get; set; } = [];
 
     /// <summary>Enlaces de reportes de partido (href) en las filas de 'matchlogs_for', uno por fila.</summary>
     public List<string> MatchReportHrefs { get; set; } = [];
@@ -28,11 +33,11 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Textos de los enlaces de partido, alineados con MatchReportHrefs. Nulo o fuera de rango = "Match Report".</summary>
     public List<string>? MatchLinkTexts { get; set; }
 
-    /// <summary>Elementos adicionales por id (p. ej. 'scorebox_meta', 'events_wrap') con su contenido de texto.</summary>
-    public Dictionary<string, string> ExtraElementsById { get; set; } = [];
-
     /// <summary>Indica si la tabla 'matchlogs_for' es visible; falso para simular un timeout en la página del equipo.</summary>
     public bool MatchLogsVisible { get; set; } = true;
+
+    /// <summary>Elementos adicionales por id (p. ej. 'scorebox_meta', 'events_wrap') con su contenido de texto.</summary>
+    public Dictionary<string, string> ExtraElementsById { get; set; } = [];
 
     /// <summary>Altura total simulada de la página (px) para los scripts de scroll.</summary>
     public int ScrollHeight { get; set; } = 2500;
@@ -43,7 +48,7 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Posición vertical simulada del scroll (px).</summary>
     public int CurrentScrollY { get; private set; }
 
-    /// <summary>Tablas (id + contenido) visibles en la página de liga o de jugador.</summary>
+    /// <summary>Tablas (id + contenido) visibles en la página de liga o de partido.</summary>
     public List<(string Id, string Content)> Tables { get; set; } = [];
 
     /// <summary>Ids de tablas que "desaparecen" del DOM (producen NoSuchElementException).</summary>
@@ -162,6 +167,7 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
         {
             // Selenium escapa caracteres especiales (p. ej. "-" como "\-") al materializar By.Id como CSS.
             elementId = elementId.Replace("\\-", "-");
+
             // La tabla de partidos puede "desaparecer" del DOM para simular timeouts.
             if (elementId == "matchlogs_for" && !MatchLogsVisible)
             {
@@ -197,13 +203,13 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
         }
     }
 
-    /// <summary>Crea los elementos de listado de tablas (todos, incluidos los stale). La primera tabla expone los enlaces de equipos.</summary>
+    /// <summary>Crea los elementos de listado de tablas. La primera tabla expone las filas de la tabla de posiciones.</summary>
     private IEnumerable<IWebElement> ListTables() =>
         Tables.Select((t, index) =>
         {
             var element = new FakeWebElement($"tabla {t.Id}", t.Id);
-            return index == 0
-                ? element.WithTeamLinks(TeamLinkHrefs)
+            return index == 0 && StandingsRows.Count > 0
+                ? element.WithStandingsRows(StandingsRows)
                 : (IWebElement)element;
         });
 
@@ -249,26 +255,56 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
 /// <summary>Extensión interna para construir elementos falsos con búsqueda relativa.</summary>
 internal static class FakeWebElementExtensions
 {
-    /// <summary>Configura el elemento para responder al selector de enlace de equipo (primer td de cada tr).</summary>
-    public static FakeWebElement WithTeamLinks(this FakeWebElement element, List<string> hrefs)
+    /// <summary>
+    /// Configura la primera tabla para responder como tabla de posiciones: filas
+    /// (XPath ".//tr") con el enlace y la celda del equipo.
+    /// </summary>
+    public static FakeWebElement WithStandingsRows(this FakeWebElement element, List<FakeStandingsRow> rows)
     {
-        element.SetFindElementsHandler(criteria => criteria.Contains("first-child") || criteria.Contains("first-of-type") || criteria.Contains("'team'")
-            ? [.. hrefs.Select(href => (IWebElement)new FakeWebElement($"equipo {href}", href: href))]
+        element.SetFindElementsHandler(criteria => criteria == ".//tr"
+            ? [.. rows.Select(row => (IWebElement)new FakeWebElement(
+                row.TeamName,
+                findElementsHandler: rowCriteria =>
+                {
+                    // Enlace del equipo dentro de la fila (celda estándar o primer td).
+                    if (rowCriteria.Contains("'team'") || rowCriteria.Contains("first-of-type"))
+                    {
+                        return [new FakeWebElement(row.TeamName, href: row.TeamHref)];
+                    }
+
+                    // Celdas de la fila (nombre del equipo vía primer td).
+                    if (rowCriteria == "td")
+                    {
+                        return [new FakeWebElement(row.TeamName)];
+                    }
+
+                    return null;
+                }))]
             : null);
         return element;
     }
 
-    /// <summary>Configura el elemento para responder como tabla 'matchlogs_for' con filas de reportes de partido.</summary>
+    /// <summary>
+    /// Configura el elemento para responder como tabla 'matchlogs_for': filas con
+    /// atributo data-row (selector MatchLogDataRows) que contienen el enlace
+    /// "Match Report" en la celda data-stat="match_report". Simula también el
+    /// filtro de texto del XPath: filas con texto distinto de "Match Report"
+    /// (partidos futuros) no devuelven enlace.
+    /// </summary>
     public static FakeWebElement WithMatchLogRows(this FakeWebElement element, List<string> hrefs, List<string>? texts = null)
     {
-        element.SetFindElementsHandler(criteria => criteria.Contains("#matchlogs_for") && criteria.EndsWith("tr", StringComparison.Ordinal)
-            ? [.. hrefs.Select((href, index) => (IWebElement)new FakeWebElement(
-                    texts is not null && index < texts.Count ? texts[index] : "Match Report",
-                    findElementsHandler: rowCriteria => rowCriteria.Contains("nth-last-child(2)") || rowCriteria.Contains("match_report")
-                        ? [new FakeWebElement(
-                            texts is not null && index < texts.Count ? texts[index] : "Match Report",
-                            href: href)]
-                        : null))]
+        element.SetFindElementsHandler(criteria => criteria == ".//tr[@data-row]"
+            ? [.. hrefs.Select((href, index) =>
+            {
+                string texto = texts is not null && index < texts.Count ? texts[index] : "Match Report";
+                return (IWebElement)new FakeWebElement(
+                    texto,
+                    dataRow: index.ToString(),
+                    findElementsHandler: rowCriteria =>
+                        rowCriteria.Contains("match_report") && string.Equals(texto.Trim(), "Match Report", StringComparison.Ordinal)
+                            ? [new FakeWebElement(texto, href: href)]
+                            : null);
+            })]
             : null);
         return element;
     }

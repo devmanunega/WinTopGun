@@ -19,21 +19,21 @@ public sealed class LeagueScrapingService : IScrapingService
 
     private readonly IDriverFactory _driverFactory;
     private readonly ITableExporter _exporter;
+    private readonly IMatchLinkRegistry _matchLinkRegistry;
     private readonly ScrapingOptions _options;
-    private readonly IMatchProgressRepositoryFactory _progressRepositoryFactory;
     private readonly ILogger<LeagueScrapingService> _logger;
 
     public LeagueScrapingService(
         IDriverFactory driverFactory,
         ITableExporter exporter,
+        IMatchLinkRegistry matchLinkRegistry,
         ScrapingOptions options,
-        IMatchProgressRepositoryFactory progressRepositoryFactory,
         ILogger<LeagueScrapingService> logger)
     {
         _driverFactory = driverFactory;
         _exporter = exporter;
+        _matchLinkRegistry = matchLinkRegistry;
         _options = options;
-        _progressRepositoryFactory = progressRepositoryFactory;
         _logger = logger;
     }
 
@@ -283,12 +283,11 @@ public sealed class LeagueScrapingService : IScrapingService
     }
 
     /// <summary>
-    /// Núcleo del proceso de partidos: recorre las ligas, itera los equipos de la
-    /// primera tabla de cada liga (enlaces en el primer <c>td</c> de cada <c>tr</c>),
-    /// abre los reportes de partido (penúltimo <c>td</c> de la tabla
-    /// <c>matchlogs_for</c>) y extrae de cada página las tablas con <c>id</c> y los
-    /// divs <c>scorebox_meta</c> y <c>events_wrap</c>, guardándolos en
-    /// <c>&lt;outputDirectory&gt;/Detalles_Partidos</c>.
+    /// Núcleo del proceso de partidos: recorre las ligas y, en la tabla de
+    /// posiciones (primera tabla con <c>id</c>) de cada una, itera cada equipo;
+    /// de la página de cada equipo recolecta los enlaces "Match Report" de su
+    /// tabla de historial, genera su hash y abre únicamente los enlaces sin
+    /// procesar según el registro persistido.
     /// </summary>
     private ScrapingResult ExtractMatchDetailsCore(
         string outputDirectory,
@@ -298,12 +297,13 @@ public sealed class LeagueScrapingService : IScrapingService
         var result = new ScrapingResult();
         string matchDirectory = Path.Combine(outputDirectory, MatchDetailsSubfolder);
 
-        // Registro de progreso: permite reanudar procesando solo los partidos pendientes.
-        IMatchProgressRepository progreso = _progressRepositoryFactory.Create(matchDirectory);
-        int yaProcesados = progreso.Load().Teams.Values.Sum(equipo => equipo.ProcessedMatchUrls.Count);
-        if (yaProcesados > 0)
+        // 1.5/1.8: cargar la estructura a nivel de aplicación que registra los
+        // enlaces procesados; permite reanudar tras una interrupción.
+        _matchLinkRegistry.Initialize(matchDirectory);
+        if (_matchLinkRegistry.ProcessedCount > 0)
         {
-            _logger.LogInformation("Reanudando extracción de partidos: {Completed} partidos ya procesados; se continuarán los pendientes", yaProcesados);
+            _logger.LogInformation("Reanudando extracción de partidos: {Completed} enlaces ya procesados; solo se abrirán los pendientes",
+                _matchLinkRegistry.ProcessedCount);
         }
 
         IWebDriver driver = _driverFactory.CreateDriver();
@@ -333,13 +333,14 @@ public sealed class LeagueScrapingService : IScrapingService
 
                 try
                 {
-                    ProcessLeagueMatches(driver, wait, matchDirectory, progreso, i + 1, totalLeagues, result, progress, cancellationToken);
+                    wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+                    ProcessLeagueMatchLinks(driver, wait, matchDirectory, i + 1, totalLeagues, result, progress, cancellationToken);
                     result.LeaguesProcessed++;
                 }
                 catch (WebDriverTimeoutException ex)
                 {
                     _logger.LogWarning(ex, "Tiempo de espera agotado en la liga '{League}'", leagueName);
-                    result.Errors.Add($"Liga '{leagueName}': la página no cargó la tabla de equipos.");
+                    result.Errors.Add($"Liga '{leagueName}': la página no cargó la tabla de posiciones.");
                 }
 
                 // Volver a la página principal antes del siguiente ciclo.
@@ -362,68 +363,32 @@ public sealed class LeagueScrapingService : IScrapingService
         return result;
     }
 
-    /// <summary>Texto que identifica el enlace de un partido ya disputado.</summary>
-    private const string MatchReportText = "Match Report";
-
     /// <summary>
-    /// Cuenta los partidos iniciales del equipo que ya constan en el registro
-    /// (misma posición y misma URL), para continuar desde el siguiente enlace.
-    /// La verificación posición por posición detiene el conteo si el orden del
-    /// sitio cambiara, para nunca omitir un partido por error.
+    /// Procesa los partidos de la liga actual recorriendo cada equipo de la tabla
+    /// de posiciones (1.1): abre la página de cada equipo, recolecta de su tabla
+    /// de historial (<c>matchlogs_for</c>) los enlaces con valor "Match Report"
+    /// (1.2–1.4) y abre únicamente los que no constan en el registro (1.7). De
+    /// cada partido extrae las tablas con <c>id</c> y los elementos de detalle, y
+    /// actualiza su estado a "procesado" en la estructura (persistido de inmediato).
     /// </summary>
-    private static int ContarProcesadosConsecutivos(
-        IMatchProgressRepository progreso,
-        string teamUrl,
-        List<(string Url, string Text)> partidos)
-    {
-        IReadOnlyList<string> procesados = progreso.GetProcessedMatchUrls(teamUrl);
-        int saltar = 0;
-
-        while (saltar < procesados.Count
-            && saltar < partidos.Count
-            && string.Equals(partidos[saltar].Url, procesados[saltar], StringComparison.OrdinalIgnoreCase))
-        {
-            saltar++;
-        }
-
-        return saltar;
-    }
-
-    /// <summary>
-    /// Indica si el texto del enlace corresponde a un partido disputado
-    /// ("Match Report"). Los partidos pendientes no tienen reporte.
-    /// </summary>
-    private static bool EsEnlacePartidoDisputado(string linkText) =>
-        string.Equals(linkText.Trim(), MatchReportText, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Itera los equipos de la tabla de clasificación de la liga actual (primer
-    /// <c>td</c> de cada <c>tr</c>), abre la página de cada uno y delega en
-    /// <see cref="ProcessTeamMatches"/> la extracción de sus partidos.
-    /// </summary>
-    private void ProcessLeagueMatches(
+    private void ProcessLeagueMatchLinks(
         IWebDriver driver,
         WebDriverWait wait,
         string matchDirectory,
-        IMatchProgressRepository progreso,
         int currentLeague,
         int totalLeagues,
         ScrapingResult result,
         IProgress<ScrapingProgress>? progress,
         CancellationToken cancellationToken)
     {
-        // Los detalles de partidos se guardan en la subcarpeta Detalles_Partidos.
-        // (matchDirectory ya viene resuelto desde ExtractMatchDetailsCore)
+        // 1: tabla de posiciones = primera tabla con atributo id.
+        IWebElement tablaPosiciones = FindStandingsTable(driver);
 
-        // Primera tabla de la página de liga (clasificación); contiene la lista de equipos.
-        wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
-        IWebElement tablaEquipos = FindStandingsTable(driver);
+        // 1.1: recorrer cada equipo (fila de la tabla de posiciones). Los enlaces
+        // de equipos se recolectan por adelantado para evitar elementos obsoletos.
+        List<(string Url, string Text)> equipos = ExtraerEnlacesEquipos(tablaPosiciones);
 
-        // Recolectar los enlaces de equipos por adelantado: navegar por URL evita
-        // elementos obsoletos (stale) al regresar de cada página visitada.
-        List<(string Url, string Text)> equipos = ExtraerEnlacesEquipos(tablaEquipos);
-
-        _logger.LogInformation("Liga {Current}/{Total}: {Count} equipos detectados",
+        _logger.LogInformation("Liga {Current}/{Total}: {Count} equipos detectados en la tabla de posiciones",
             currentLeague, totalLeagues, equipos.Count);
 
         for (int e = 0; e < equipos.Count; e++)
@@ -446,124 +411,194 @@ public sealed class LeagueScrapingService : IScrapingService
             {
                 _logger.LogWarning("El equipo '{Team}' no cargó la tabla de partidos ('matchlogs_for')", teamUrl);
                 result.Errors.Add($"Liga {currentLeague}: el equipo '{teamName}' no cargó la tabla 'matchlogs_for'.");
+                VolverAPaginaDeLiga(driver, wait);
                 continue;
             }
 
-            ProcessTeamMatches(driver, wait, matchDirectory, progreso, teamUrl, currentLeague, totalLeagues, e + 1, equipos.Count, teamName, result, progress, cancellationToken);
+            // 1.2–1.4: recolectar los enlaces "Match Report" del equipo, extraer
+            // sus href, normalizarlos a URL absoluta y obtener el ID único de cada partido.
+            List<MatchLinkTarget> targets = CollectMatchReportLinks(driver.FindElement(Selectors.MatchLogsTable), teamName, driver.Url);
+
+            // 1.2: dar de alta los enlaces en el registro (los nuevos como Pending;
+            // los existentes no se sobrescriben).
+            foreach (MatchLinkTarget target in targets)
+            {
+                _matchLinkRegistry.Register(target);
+            }
+
+            int pendientes = 0;
+
+            for (int k = 0; k < targets.Count; k++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                MatchLinkTarget target = targets[k];
+
+                // 1.7 / 2.1–2.2: abrir solo los enlaces cuyo estado es distinto de
+                // Processed. Los ya procesados se omiten y se continúa con el siguiente.
+                if (_matchLinkRegistry.IsProcessed(target.MatchId))
+                {
+                    result.MatchesSkipped++;
+                    _logger.LogDebug("Partido '{Url}' ya procesado; se omite", target.Url);
+                    continue;
+                }
+
+                pendientes++;
+                _logger.LogInformation("[Partido {Current}/{Total}] Abriendo: {Url}", k + 1, targets.Count, target.Url);
+                progress?.Report(ScrapingProgress.ForMatchLink(currentLeague, totalLeagues, k + 1, targets.Count, teamName));
+
+                driver.Navigate().GoToUrl(target.Url);
+                WaitForPageComplete(driver, wait);
+
+                // Simula un usuario revisando el resultado: pausa larga (3-8 s por defecto)
+                // y pequeños desplazamientos de página antes de extraer los datos.
+                SimularRevisionPartido(driver, cancellationToken);
+
+                try
+                {
+                    wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+                }
+                catch (WebDriverTimeoutException)
+                {
+                    _logger.LogWarning("La página del partido '{Url}' no cargó tablas con 'table[id]'", target.Url);
+                    result.Errors.Add($"Liga {currentLeague}: la página del partido '{target.Url}' no cargó tablas con 'table[id]'.");
+                    _matchLinkRegistry.MarkFailed(target);
+                    RegresarAPaginaDelEquipo(driver, wait);
+                    continue;
+                }
+
+                string pageSegment = GetPageSegment(driver);
+                int erroresAntes = result.Errors.Count;
+
+                ExtractTablesOnCurrentPage(driver, matchDirectory, pageSegment, currentLeague, totalLeagues, result, progress, cancellationToken);
+
+                // Elementos adicionales de la página de detalle del partido. Son
+                // complementarios: su ausencia no impide registrar el partido como
+                // procesado (en FBref el div scorebox_meta no existe en todas las páginas).
+                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.ScoreboxMeta, "scorebox_meta", result, cancellationToken, esOpcional: true);
+                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken, esOpcional: true);
+
+                // 2.4: marcar según el resultado — Processed solo si la exportación
+                // fue limpia; Failed (reintento en la próxima ejecución) si hubo
+                // incidencias. Ambos estados se persisten de inmediato.
+                if (result.Errors.Count == erroresAntes)
+                {
+                    _matchLinkRegistry.MarkProcessed(target);
+                }
+                else
+                {
+                    _matchLinkRegistry.MarkFailed(target);
+                    _logger.LogWarning("El partido '{Match}' terminó con {Count} incidencia(s); se reintentará en la próxima ejecución",
+                        target.Url, result.Errors.Count - erroresAntes);
+                }
+
+                // Volver a la página del equipo antes del siguiente partido.
+                RegresarAPaginaDelEquipo(driver, wait);
+            }
+
+            _logger.LogInformation("Equipo '{Team}': {Total} partidos disputados, {Pendientes} procesados en esta ejecución",
+                teamName, targets.Count, pendientes);
 
             // Volver a la página de liga antes del siguiente equipo.
-            driver.Navigate().Back();
-            WaitForPageComplete(driver, wait);
-            wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+            VolverAPaginaDeLiga(driver, wait);
         }
     }
 
-    /// <summary>
-    /// Abre secuencialmente los reportes de partido del equipo actual (enlaces en
-    /// el penúltimo <c>td</c> de cada fila de <c>matchlogs_for</c>) y, en cada
-    /// página, extrae las tablas con <c>id</c> y los divs <c>scorebox_meta</c> y
-    /// <c>events_wrap</c>, exportándolos al directorio de detalles de partidos.
-    /// </summary>
-    private void ProcessTeamMatches(
-        IWebDriver driver,
-        WebDriverWait wait,
-        string matchDirectory,
-        IMatchProgressRepository progreso,
-        string teamUrl,
-        int currentLeague,
-        int totalLeagues,
-        int currentTeam,
-        int totalTeams,
-        string teamName,
-        ScrapingResult result,
-        IProgress<ScrapingProgress>? progress,
-        CancellationToken cancellationToken)
+    /// <summary>Regresa a la página de liga y espera a que su tabla de posiciones esté disponible.</summary>
+    private static void VolverAPaginaDeLiga(IWebDriver driver, WebDriverWait wait)
     {
-        IWebElement tablaPartidos = driver.FindElement(Selectors.MatchLogsTable);
+        driver.Navigate().Back();
+        WaitForPageComplete(driver, wait);
+        wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+    }
 
-        // Recolectar los enlaces de partidos por adelantado: se prefiere la columna
-        // estándar (data-stat="match_report") y, como alternativa, el penúltimo td
-        // de cada fila. Solo se procesan partidos ya disputados: el enlace del
-        // reporte contiene el texto "Match Report"; los encuentros pendientes no lo
-        // tienen, por lo que quedan fuera de la extracción.
-        List<(string Url, string Text)> partidos = [.. tablaPartidos
-            .FindElements(Selectors.MatchLogRows)
-            .Select(row => row.FindElements(Selectors.MatchReportLink).FirstOrDefault()
-                ?? row.FindElements(Selectors.PenultimateCellLink).FirstOrDefault())
+    /// <summary>Regresa a la página del equipo y espera a que su tabla de partidos esté disponible.</summary>
+    private static void RegresarAPaginaDelEquipo(IWebDriver driver, WebDriverWait wait)
+    {
+        driver.Navigate().Back();
+        WaitForPageComplete(driver, wait);
+        wait.Until(d => d.FindElements(Selectors.MatchLogsTable).Count > 0);
+    }
+
+    /// <summary>
+    /// Extrae los enlaces de equipo de la tabla de posiciones: usa la celda
+    /// estándar del sitio (<c>data-stat="team"</c>) y, si no produce resultados,
+    /// el primer <c>td</c> de cada fila. Se omiten filas sin enlace (p. ej. cabeceras).
+    /// </summary>
+    private static List<(string Url, string Text)> ExtraerEnlacesEquipos(IWebElement tablaPosiciones)
+    {
+        List<IWebElement> filas = [.. tablaPosiciones.FindElements(Selectors.TableRows)];
+
+        List<IWebElement> enlaces = [.. filas
+            .Select(fila => fila.FindElements(Selectors.TeamLink).FirstOrDefault()
+                ?? fila.FindElements(Selectors.FirstDataCellLink).FirstOrDefault())
             .Where(link => link is not null)
-            .Select(link => (Url: link!.GetAttribute("href"), Text: link.Text))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Url) && EsEnlacePartidoDisputado(x.Text))];
+            .Select(link => link!)
+            .Distinct()];
 
-        _logger.LogInformation("Equipo '{Team}': {Count} partidos disputados detectados (de {Rows} filas en matchlogs_for)",
-            teamName, partidos.Count, tablaPartidos.FindElements(Selectors.MatchLogRows).Count);
+        return [.. enlaces
+            .Select(a => (Url: a.GetAttribute("href"), Text: a.Text))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Url))];
+    }
 
-        // Reanudación por conteo: se omiten los primeros enlaces que ya constan en
-        // el registro del equipo y se continúa a partir del siguiente enlace
-        // pendiente (p. ej. 5 de 10 procesados → se procesa desde el enlace 6).
-        int yaProcesados = ContarProcesadosConsecutivos(progreso, teamUrl, partidos);
-        result.MatchesSkipped += yaProcesados;
-        if (yaProcesados > 0)
+    /// <summary>
+    /// Recolecta los enlaces "Match Report" de la tabla de historial del equipo
+    /// (fase 1.0–1.2 de Ideas/Partidos.md): usa el selector robusto
+    /// (<c>data-stat="match_report"</c> + texto, filas con <c>data-row</c>),
+    /// normaliza cada href a URL absoluta (1.1) y extrae el ID único del partido
+    /// como clave de deduplicación. Los elementos se leen como texto por adelantado
+    /// para evitar <c>StaleElementReferenceException</c> al navegar (punto de
+    /// atención 1 del documento).
+    /// </summary>
+    private List<MatchLinkTarget> CollectMatchReportLinks(IWebElement tablaPartidos, string teamName, string pageUrl)
+    {
+        var targets = new List<MatchLinkTarget>();
+        var matchIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (IWebElement fila in tablaPartidos.FindElements(Selectors.MatchLogDataRows))
         {
-            _logger.LogInformation("Equipo '{Team}': {Skipped} partidos ya procesados; se continúa desde el enlace {Next} de {Total}",
-                teamName, yaProcesados, yaProcesados + 1, partidos.Count);
-        }
+            int rowIndex = int.TryParse(fila.GetAttribute("data-row"), out int valor) ? valor : -1;
 
-        List<(string Url, string Text)> pendientes = [.. partidos.Skip(yaProcesados)];
-
-        for (int m = 0; m < pendientes.Count; m++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            (string matchUrl, string matchText) = pendientes[m];
-            _logger.LogInformation("[Partido {Current}/{Total}] Abriendo: {Match}", m + 1, pendientes.Count, matchUrl);
-            progress?.Report(ScrapingProgress.ForMatchLink(currentLeague, totalLeagues, currentTeam, totalTeams, m + 1, pendientes.Count, matchText));
-
-            driver.Navigate().GoToUrl(matchUrl);
-            WaitForPageComplete(driver, wait);
-
-            // Simula un usuario revisando el resultado: pausa larga (3-8 s por defecto)
-            // y pequeños desplazamientos de página antes de extraer los datos.
-            SimularRevisionPartido(driver, cancellationToken);
-
-            try
+            // Selector recomendado: celda data-stat="match_report" con texto exacto.
+            IWebElement? link = fila.FindElements(Selectors.MatchReportCellLink).FirstOrDefault();
+            if (link is null)
             {
-                wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+                continue; // Partido futuro o fila sin reporte: se tolera.
             }
-            catch (WebDriverTimeoutException)
+
+            // 1.1: href normalizado a URL absoluta.
+            string href = link.GetAttribute("href");
+            if (string.IsNullOrWhiteSpace(href))
             {
-                _logger.LogWarning("La página del partido '{Url}' no cargó tablas con 'table[id]'", matchUrl);
-                result.Errors.Add($"Liga {currentLeague}: la página del partido '{matchText}' no cargó tablas con 'table[id]'.");
                 continue;
             }
 
-            string pageSegment = GetPageSegment(driver);
-            int erroresAntes = result.Errors.Count;
+            string urlAbsoluta = NormalizarUrl(href, pageUrl);
 
-            ExtractTablesOnCurrentPage(driver, matchDirectory, pageSegment, currentLeague, totalLeagues, result, progress, cancellationToken);
-
-            // Elementos adicionales de la página de detalle del partido.
-            ExportElementContent(driver, matchDirectory, pageSegment, Selectors.ScoreboxMeta, "scorebox_meta", result, cancellationToken);
-            ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken);
-
-            // Registro de progreso: solo se marca si la exportación fue limpia; un
-            // partido con incidencias se reintentará en la próxima ejecución.
-            if (result.Errors.Count == erroresAntes)
+            // 1.1: ID único del partido (clave de deduplicación).
+            string matchId = MatchIdExtractor.ExtractId(urlAbsoluta);
+            if (!matchIds.Add(matchId))
             {
-                progreso.MarkMatchProcessed(teamUrl, teamName, matchUrl);
-                _logger.LogDebug("Partido '{Match}' registrado como procesado ({Processed}/{Total} del equipo)",
-                    matchUrl, erroresAntes, pendientes.Count);
-            }
-            else
-            {
-                _logger.LogWarning("El partido '{Match}' terminó con {Count} incidencia(s); se reintentará en la próxima ejecución",
-                    matchUrl, result.Errors.Count - erroresAntes);
+                continue;
             }
 
-            // Volver a la página del equipo antes del siguiente partido.
-            driver.Navigate().Back();
-            WaitForPageComplete(driver, wait);
-            wait.Until(d => d.FindElements(Selectors.MatchLogsTable).Count > 0);
+            targets.Add(new MatchLinkTarget(matchId, urlAbsoluta, teamName, rowIndex));
         }
+
+        return targets;
+    }
+
+    /// <summary>Convierte un href relativo a URL absoluta usando la página actual como base.</summary>
+    private static string NormalizarUrl(string href, string pageUrl)
+    {
+        if (Uri.TryCreate(href, UriKind.Absolute, out _))
+        {
+            return href;
+        }
+
+        return Uri.TryCreate(pageUrl, UriKind.Absolute, out var baseUri)
+            ? new Uri(baseUri, href).ToString()
+            : href;
     }
 
     /// <summary>
@@ -571,6 +606,10 @@ public sealed class LeagueScrapingService : IScrapingService
     /// <c>scorebox_meta</c> y <c>events_wrap</c>) y lo exporta con el mismo
     /// mecanismo usado para las tablas.
     /// </summary>
+    /// <param name="esOpcional">
+    /// Si es verdadero, la ausencia o obsolescencia del elemento solo genera una
+    /// advertencia (no impide que el partido se registre como procesado).
+    /// </param>
     private void ExportElementContent(
         IWebDriver driver,
         string outputDirectory,
@@ -578,7 +617,8 @@ public sealed class LeagueScrapingService : IScrapingService
         By locator,
         string elementId,
         ScrapingResult result,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool esOpcional = false)
     {
         try
         {
@@ -596,33 +636,26 @@ public sealed class LeagueScrapingService : IScrapingService
         }
         catch (NoSuchElementException)
         {
+            if (esOpcional)
+            {
+                _logger.LogWarning("El elemento opcional '{ElementId}' no existe en la página '{Segment}'; se omite", elementId, pageSegment);
+                return;
+            }
+
             _logger.LogWarning("El elemento '{ElementId}' no existe en la página '{Segment}'", elementId, pageSegment);
             result.Errors.Add($"Partido '{pageSegment}': el elemento '{elementId}' no existe en la página.");
         }
         catch (StaleElementReferenceException)
         {
+            if (esOpcional)
+            {
+                _logger.LogWarning("Elemento opcional '{ElementId}' obsoleto en '{Segment}'; se omite", elementId, pageSegment);
+                return;
+            }
+
             _logger.LogWarning("Elemento obsoleto al procesar '{ElementId}' en '{Segment}'", elementId, pageSegment);
             result.Errors.Add($"Partido '{pageSegment}': el elemento '{elementId}' quedó obsoleto (stale element).");
         }
-    }
-
-    /// <summary>
-    /// Extrae los enlaces de equipo de la tabla de clasificación: usa la celda
-    /// estándar del sitio (<c>data-stat="team"</c>) y, si no produce resultados,
-    /// el primer <c>td</c> de cada fila.
-    /// </summary>
-    private static List<(string Url, string Text)> ExtraerEnlacesEquipos(IWebElement tablaEquipos)
-    {
-        List<IWebElement> enlaces = [.. tablaEquipos.FindElements(Selectors.TeamLink)];
-
-        if (enlaces.Count == 0)
-        {
-            enlaces = [.. tablaEquipos.FindElements(Selectors.FirstDataCellLink)];
-        }
-
-        return [.. enlaces
-            .Select(a => (Url: a.GetAttribute("href"), Text: a.Text))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Url))];
     }
 
     /// <summary>

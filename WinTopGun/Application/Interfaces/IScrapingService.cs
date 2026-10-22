@@ -34,12 +34,15 @@ public interface IScrapingService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Recorre las ligas y, por cada una, itera los equipos de su tabla de
-    /// clasificación (primer <c>td</c> de cada <c>tr</c>), abre el reporte de cada
-    /// partido (penúltimo <c>td</c> de la tabla <c>matchlogs_for</c>) y extrae de
-    /// cada página las tablas con <c>id</c>, el div <c>scorebox_meta</c> y el div
-    /// <c>events_wrap</c>. Los archivos se guardan en la subcarpeta
-    /// <c>Detalles_Partidos</c> del directorio indicado.
+    /// Recorre las ligas y, en la tabla de posiciones (primera tabla con <c>id</c>)
+    /// de cada una, itera cada equipo (fila) y abre su página; de la tabla de
+    /// historial (<c>matchlogs_for</c>) de cada equipo recolecta los enlaces con
+    /// valor "Match Report". Cada enlace se identifica con un hash y se registra
+    /// en una estructura persistida a nivel de aplicación; solo se abren los
+    /// enlaces sin procesar. De cada página de partido se extraen las tablas con
+    /// <c>id</c>, el div <c>scorebox_meta</c> y el div <c>events_wrap</c>, guardados
+    /// en la subcarpeta <c>Detalles_Partidos</c>. En caso de interrupción, la
+    /// siguiente ejecución procesa solo los partidos pendientes.
     /// </summary>
     /// <param name="outputDirectory">Directorio base de los archivos generados.</param>
     /// <param name="progress">Receptor opcional de reportes de avance.</param>
