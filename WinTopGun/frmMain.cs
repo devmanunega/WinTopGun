@@ -106,6 +106,16 @@ public partial class frmMain : Form
                 servicio.ExtractMatchDetailsAsync(directorio, progreso, token));
 
     /// <summary>
+    /// Proceso "Partidos por Liga": igual que el de partidos, pero no recorre las
+    /// 5 ligas principales — procesa los equipos de la tabla de posiciones de la
+    /// liga que el navegador tenga abierta en ese momento.
+    /// </summary>
+    private async void btnPartidosPorLiga_Click(object sender, EventArgs e) =>
+        await EjecutarExtraccionAsync(
+            (servicio, directorio, progreso, token) =>
+                servicio.ExtractCurrentLeagueMatchDetailsAsync(directorio, progreso, token));
+
+    /// <summary>
     /// Orquestación compartida por ambos procesos de extracción: valida el directorio
     /// destino, ejecuta la operación con progreso y cancelación, y muestra el resultado.
     /// </summary>
@@ -211,6 +221,7 @@ public partial class frmMain : Form
         btnExtract.Enabled = !enCurso;
         btnExtractPlayers.Enabled = !enCurso;
         btnExtractPartidos.Enabled = !enCurso;
+        btnPartidosPorLiga.Enabled = !enCurso;
         btnCancelar.Enabled = enCurso;
 
         if (!enCurso)

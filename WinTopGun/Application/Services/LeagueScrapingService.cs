@@ -85,6 +85,22 @@ public sealed class LeagueScrapingService : IScrapingService
             cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<ScrapingResult> ExtractCurrentLeagueMatchDetailsAsync(
+        string outputDirectory,
+        IProgress<ScrapingProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Selenium es una API bloqueante: se ejecuta en un hilo de trabajo
+        // para no congelar la interfaz gráfica.
+        return await Task.Run(
+            () => ExtractCurrentLeagueMatchDetailsCore(outputDirectory, progress, cancellationToken),
+            cancellationToken);
+    }
+
     private ScrapingResult ExtractCore(
         string outputDirectory,
         IProgress<ScrapingProgress>? progress,
@@ -283,11 +299,69 @@ public sealed class LeagueScrapingService : IScrapingService
     }
 
     /// <summary>
+    /// Núcleo del proceso "Partidos por Liga": igual que <see cref="ExtractMatchDetailsCore"/>,
+    /// pero no recorre las 5 ligas principales — trabaja sobre la página que el
+    /// navegador tiene abierta (la liga), procesando los equipos de su tabla de
+    /// posiciones.
+    /// </summary>
+    private ScrapingResult ExtractCurrentLeagueMatchDetailsCore(
+        string outputDirectory,
+        IProgress<ScrapingProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var result = new ScrapingResult();
+        string matchDirectory = Path.Combine(outputDirectory, MatchDetailsSubfolder);
+
+        // Cargar la estructura persistida de enlaces procesados (fase 0).
+        _matchLinkRegistry.Initialize(matchDirectory);
+        if (_matchLinkRegistry.ProcessedCount > 0)
+        {
+            _logger.LogInformation("Reanudando extracción de partidos: {Completed} enlaces ya procesados; solo se abrirán los pendientes",
+                _matchLinkRegistry.ProcessedCount);
+        }
+
+        IWebDriver driver = _driverFactory.CreateDriver();
+
+        try
+        {
+            var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(_options.WaitTimeoutSeconds));
+
+            // Trabaja sobre la página actual del navegador: la liga. No navega a
+            // la página principal ni recorre las demás ligas.
+            wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+            string leagueName = GetPageSegment(driver);
+            _logger.LogInformation("Extracción de partidos por liga iniciada en la página actual: {League}", leagueName);
+            progress?.Report(ScrapingProgress.ForLeague(1, 1, leagueName));
+
+            ProcessLeagueMatchLinks(driver, wait, matchDirectory, 1, 1, result, progress, cancellationToken);
+            result.LeaguesProcessed++;
+        }
+        catch (WebDriverTimeoutException ex)
+        {
+            _logger.LogWarning(ex, "La página actual no cargó la tabla de posiciones");
+            result.Errors.Add("La página actual no cargó la tabla de posiciones. Verifique que el navegador esté sobre la página de una liga.");
+        }
+        catch (OperationCanceledException)
+        {
+            result.WasCancelled = true;
+            _logger.LogInformation("Extracción de partidos por liga cancelada por el usuario");
+        }
+        finally
+        {
+            driver.Quit();
+            _logger.LogInformation("Extracción de partidos por liga finalizada: {Tables} tablas exportadas, {Skipped} partidos omitidos (ya procesados), {Errors} errores",
+                result.TablesExported, result.MatchesSkipped, result.Errors.Count);
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Núcleo del proceso de partidos: recorre las ligas y, en la tabla de
     /// posiciones (primera tabla con <c>id</c>) de cada una, itera cada equipo;
     /// de la página de cada equipo recolecta los enlaces "Match Report" de su
-    /// tabla de historial, genera su hash y abre únicamente los enlaces sin
-    /// procesar según el registro persistido.
+    /// tabla de historial, identifica cada partido por su <c>MatchId</c> y abre
+    /// únicamente los enlaces sin procesar según el registro persistido.
     /// </summary>
     private ScrapingResult ExtractMatchDetailsCore(
         string outputDirectory,

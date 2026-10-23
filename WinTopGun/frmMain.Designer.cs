@@ -41,6 +41,7 @@ namespace WinTopGun
             progressBarExtraccion = new ProgressBar();
             btnExtractPlayers = new Button();
             btnExtractPartidos = new Button();
+            btnPartidosPorLiga = new Button();
             menuStrip1.SuspendLayout();
             flowLayoutPanel1.SuspendLayout();
             panelEstado.SuspendLayout();
@@ -88,6 +89,7 @@ namespace WinTopGun
             flowLayoutPanel1.Controls.Add(btnCancelar);
             flowLayoutPanel1.Controls.Add(btnExtractPlayers);
             flowLayoutPanel1.Controls.Add(btnExtractPartidos);
+            flowLayoutPanel1.Controls.Add(btnPartidosPorLiga);
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(0, 24);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
@@ -174,6 +176,18 @@ namespace WinTopGun
             btnExtractPartidos.UseVisualStyleBackColor = true;
             btnExtractPartidos.Click += btnExtractPartidos_Click;
             // 
+            // btnPartidosPorLiga
+            // 
+            btnPartidosPorLiga.Image = Properties.Resources.icons8_prismaticos_50;
+            btnPartidosPorLiga.Location = new Point(471, 3);
+            btnPartidosPorLiga.Name = "btnPartidosPorLiga";
+            btnPartidosPorLiga.Size = new Size(118, 57);
+            btnPartidosPorLiga.TabIndex = 4;
+            btnPartidosPorLiga.Text = "Partidos por Liga";
+            btnPartidosPorLiga.TextAlign = ContentAlignment.MiddleCenter;
+            btnPartidosPorLiga.UseVisualStyleBackColor = true;
+            btnPartidosPorLiga.Click += btnPartidosPorLiga_Click;
+            // 
             // frmMain
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -208,5 +222,6 @@ namespace WinTopGun
         private Label lblEstado;
         private Button btnExtractPlayers;
         private Button btnExtractPartidos;
+        private Button btnPartidosPorLiga;
     }
 }

@@ -652,4 +652,94 @@ public sealed class LeagueScrapingServiceTests
         Assert.Contains(progress.Reports, r => r.Message.Contains("Equipo 2/2"));
         Assert.Contains(progress.Reports, r => r.Message.Contains("Partido 1/1"));
     }
+
+    // ------------------------------------------------------------------
+    // Flujo "Partidos por Liga" (btnPartidosPorLiga): igual que el proceso de
+    // partidos, pero sobre la liga que el navegador tiene abierta (sin recorrer
+    // las 5 ligas principales).
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task PartidosPorLiga_HappyPath_ProcesaSoloLaLigaActual()
+    {
+        // Arrange: el navegador está sobre la página de una liga.
+        var driver = CreateDriverForMatches(teams: 2, matchesPerTeam: 2);
+        var service = CreateService(driver, out var factory, out var exporter);
+        string expectedDirectory = Path.Combine(OutputDirectory, "Detalles_Partidos");
+
+        // Act
+        ScrapingResult resultado = await service.ExtractCurrentLeagueMatchDetailsAsync(OutputDirectory);
+
+        // Assert: 2 partidos × (3 tablas + 2 divs) = 10; el equipo 2 omite los ya
+        // procesados por el 1 (mismo MatchId).
+        Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
+        Assert.Equal(1, resultado.LeaguesProcessed);
+        Assert.Equal(10, resultado.TablesExported);
+        Assert.Equal(10, exporter.Exports.Count);
+        Assert.All(exporter.Exports, e => Assert.Equal(expectedDirectory, e.OutputDirectory));
+        Assert.Equal(2, driver.VisitedUrls.Count(u => u.Contains("/equipos/")));
+        Assert.Equal(2, driver.VisitedUrls.Count(u => u.Contains("/partidos/")));
+        Assert.Equal(4, driver.NavigationsBack); // 2 (partido→equipo) + 2 (equipo→liga); sin vuelta a la página principal
+        Assert.Equal(2, resultado.MatchesSkipped);
+        Assert.True(driver.QuitCalled);
+    }
+
+    [Fact]
+    public async Task PartidosPorLiga_SinTablaPosiciones_ReportaError()
+    {
+        // Arrange: la página actual no carga la tabla de posiciones.
+        var driver = CreateDriverForMatches(teams: 2, matchesPerTeam: 2);
+        driver.TablesVisible = false;
+        var service = CreateService(driver, out _, out var exporter);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractCurrentLeagueMatchDetailsAsync(OutputDirectory);
+
+        // Assert
+        Assert.False(resultado.Success);
+        Assert.Equal(0, resultado.LeaguesProcessed);
+        Assert.Contains(resultado.Errors, e => e.Contains("página actual") && e.Contains("tabla de posiciones"));
+        Assert.Empty(exporter.Exports);
+        Assert.True(driver.QuitCalled);
+    }
+
+    [Fact]
+    public async Task PartidosPorLiga_Reanuda_SoloEnlacesPendientes()
+    {
+        // Arrange: el partido-1 ya fue procesado en una ejecución previa.
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 2);
+        var registry = new FakeMatchLinkRegistry();
+        string partido1 = "https://sitio-de-prueba.test/partidos/partido-1";
+        registry.MarkProcessed(new MatchLinkTarget(
+            MatchIdExtractor.ExtractId(partido1), partido1, "Equipo previo", RowIndex: 0));
+        var service = CreateService(driver, out _, out var exporter, registry);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractCurrentLeagueMatchDetailsAsync(OutputDirectory);
+
+        // Assert: solo se procesa partido-2.
+        Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
+        Assert.Equal(1, resultado.MatchesSkipped);
+        Assert.Equal(5, exporter.Exports.Count); // 1 partido × (3 tablas + 2 divs)
+        Assert.Single(driver.VisitedUrls.Where(u => u.Contains("/partidos/") && u.Contains("partido-2")));
+        Assert.DoesNotContain(driver.VisitedUrls, u => u.Contains("/partidos/") && u.Contains("partido-1"));
+    }
+
+    [Fact]
+    public async Task PartidosPorLiga_Progreso_ReportaLigaUnica()
+    {
+        // Arrange
+        var driver = CreateDriverForMatches(teams: 2, matchesPerTeam: 1);
+        var service = CreateService(driver, out _, out _);
+        var progress = new RecordingProgress();
+
+        // Act
+        await service.ExtractCurrentLeagueMatchDetailsAsync(OutputDirectory, progress);
+
+        // Assert: una sola liga (1/1) y sus equipos.
+        Assert.Contains(progress.Reports, r => r is { CurrentLeague: 1, TotalLeagues: 1, CurrentTable: 0 });
+        Assert.Contains(progress.Reports, r => r.Message.Contains("Equipo 1/2"));
+        Assert.Contains(progress.Reports, r => r.Message.Contains("Equipo 2/2"));
+        Assert.DoesNotContain(progress.Reports, r => r.TotalLeagues > 1);
+    }
 }
