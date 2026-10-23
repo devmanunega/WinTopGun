@@ -218,10 +218,16 @@ public partial class frmMain : Form
 
     private void SetOperacionEnCurso(bool enCurso)
     {
-        btnExtract.Enabled = !enCurso;
-        btnExtractPlayers.Enabled = !enCurso;
-        btnExtractPartidos.Enabled = !enCurso;
-        btnPartidosPorLiga.Enabled = !enCurso;
+        // Se recorren los botones del grupo de procesos: al agregar un botón
+        // de extracción al diseñador queda cubierto automáticamente.
+        foreach (Control control in flowProcesos.Controls)
+        {
+            if (control is Button boton)
+            {
+                boton.Enabled = !enCurso;
+            }
+        }
+
         btnCancelar.Enabled = enCurso;
 
         if (!enCurso)

@@ -34,6 +34,9 @@ namespace WinTopGun
             directorioDestinoToolStripMenuItem = new ToolStripMenuItem();
             reiniciarRegistroPartidosToolStripMenuItem = new ToolStripMenuItem();
             flowLayoutPanel1 = new FlowLayoutPanel();
+            grpExtraccion = new GroupBox();
+            flowProcesos = new FlowLayoutPanel();
+            grpControl = new GroupBox();
             btnExtract = new Button();
             btnCancelar = new Button();
             panelEstado = new Panel();
@@ -44,6 +47,9 @@ namespace WinTopGun
             btnPartidosPorLiga = new Button();
             menuStrip1.SuspendLayout();
             flowLayoutPanel1.SuspendLayout();
+            grpExtraccion.SuspendLayout();
+            flowProcesos.SuspendLayout();
+            grpControl.SuspendLayout();
             panelEstado.SuspendLayout();
             SuspendLayout();
             // 
@@ -85,16 +91,53 @@ namespace WinTopGun
             // 
             // flowLayoutPanel1
             // 
-            flowLayoutPanel1.Controls.Add(btnExtract);
-            flowLayoutPanel1.Controls.Add(btnCancelar);
-            flowLayoutPanel1.Controls.Add(btnExtractPlayers);
-            flowLayoutPanel1.Controls.Add(btnExtractPartidos);
-            flowLayoutPanel1.Controls.Add(btnPartidosPorLiga);
+            flowLayoutPanel1.Controls.Add(grpExtraccion);
+            flowLayoutPanel1.Controls.Add(grpControl);
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(0, 24);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
             flowLayoutPanel1.Size = new Size(658, 392);
             flowLayoutPanel1.TabIndex = 1;
+            // 
+            // grpExtraccion
+            // 
+            grpExtraccion.AutoSize = true;
+            grpExtraccion.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            grpExtraccion.Controls.Add(flowProcesos);
+            grpExtraccion.Location = new Point(3, 3);
+            grpExtraccion.Name = "grpExtraccion";
+            grpExtraccion.Padding = new Padding(3);
+            grpExtraccion.Size = new Size(506, 95);
+            grpExtraccion.TabIndex = 0;
+            grpExtraccion.TabStop = false;
+            grpExtraccion.Text = "Procesos de extracción";
+            // 
+            // flowProcesos
+            // 
+            flowProcesos.AutoSize = true;
+            flowProcesos.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            flowProcesos.Controls.Add(btnExtract);
+            flowProcesos.Controls.Add(btnExtractPlayers);
+            flowProcesos.Controls.Add(btnExtractPartidos);
+            flowProcesos.Controls.Add(btnPartidosPorLiga);
+            flowProcesos.Dock = DockStyle.Fill;
+            flowProcesos.Location = new Point(6, 21);
+            flowProcesos.Name = "flowProcesos";
+            flowProcesos.Size = new Size(494, 68);
+            flowProcesos.TabIndex = 0;
+            // 
+            // grpControl
+            // 
+            grpControl.AutoSize = true;
+            grpControl.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            grpControl.Controls.Add(btnCancelar);
+            grpControl.Location = new Point(515, 3);
+            grpControl.Name = "grpControl";
+            grpControl.Padding = new Padding(3);
+            grpControl.Size = new Size(102, 95);
+            grpControl.TabIndex = 1;
+            grpControl.TabStop = false;
+            grpControl.Text = "Control";
             // 
             // btnExtract
             // 
@@ -108,10 +151,10 @@ namespace WinTopGun
             btnExtract.TextImageRelation = TextImageRelation.TextBeforeImage;
             btnExtract.UseVisualStyleBackColor = true;
             btnExtract.Click += btnExtract_Click;
-            // btnCancelar
             // 
+            // btnCancelar
             btnCancelar.Enabled = false;
-            btnCancelar.Location = new Point(127, 3);
+            btnCancelar.Location = new Point(6, 21);
             btnCancelar.Name = "btnCancelar";
             btnCancelar.Size = new Size(90, 57);
             btnCancelar.TabIndex = 1;
@@ -153,7 +196,7 @@ namespace WinTopGun
             // btnExtractPlayers
             // 
             btnExtractPlayers.Image = Properties.Resources.icons8_prismaticos_50;
-            btnExtractPlayers.Location = new Point(223, 3);
+            btnExtractPlayers.Location = new Point(127, 3);
             btnExtractPlayers.Name = "btnExtractPlayers";
             btnExtractPlayers.Size = new Size(118, 57);
             btnExtractPlayers.TabIndex = 2;
@@ -166,7 +209,7 @@ namespace WinTopGun
             // btnExtractPartidos
             // 
             btnExtractPartidos.Image = Properties.Resources.icons8_prismaticos_50;
-            btnExtractPartidos.Location = new Point(347, 3);
+            btnExtractPartidos.Location = new Point(251, 3);
             btnExtractPartidos.Name = "btnExtractPartidos";
             btnExtractPartidos.Size = new Size(118, 57);
             btnExtractPartidos.TabIndex = 3;
@@ -179,7 +222,7 @@ namespace WinTopGun
             // btnPartidosPorLiga
             // 
             btnPartidosPorLiga.Image = Properties.Resources.icons8_prismaticos_50;
-            btnPartidosPorLiga.Location = new Point(471, 3);
+            btnPartidosPorLiga.Location = new Point(375, 3);
             btnPartidosPorLiga.Name = "btnPartidosPorLiga";
             btnPartidosPorLiga.Size = new Size(118, 57);
             btnPartidosPorLiga.TabIndex = 4;
@@ -202,6 +245,9 @@ namespace WinTopGun
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();
             flowLayoutPanel1.ResumeLayout(false);
+            grpExtraccion.ResumeLayout(false);
+            flowProcesos.ResumeLayout(false);
+            grpControl.ResumeLayout(false);
             panelEstado.ResumeLayout(false);
             ResumeLayout(false);
             PerformLayout();
@@ -215,6 +261,9 @@ namespace WinTopGun
         private ToolStripMenuItem directorioDestinoToolStripMenuItem;
         private ToolStripMenuItem reiniciarRegistroPartidosToolStripMenuItem;
         private FlowLayoutPanel flowLayoutPanel1;
+        private GroupBox grpExtraccion;
+        private FlowLayoutPanel flowProcesos;
+        private GroupBox grpControl;
         private Button btnExtract;
         private Button btnCancelar;
         private Panel panelEstado;
