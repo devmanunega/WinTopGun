@@ -33,6 +33,7 @@ public static class Composition
             .AddSingleton<ITableExporter, TextFileTableExporter>()
             .AddSingleton<IMatchLinkRegistry, JsonMatchLinkRegistry>()
             .AddSingleton<IScrapingService, LeagueScrapingService>()
+            .AddSingleton<IClasificacionService, ClasificacionService>()
             .AddLogging(logging =>
             {
                 logging.SetMinimumLevel(LogLevel.Information);

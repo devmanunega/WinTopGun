@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Text;
 using WinTopGun.Application.Interfaces;
 using WinTopGun.Application.Services;
 using WinTopGun.Domain.Models;
@@ -15,6 +16,7 @@ public partial class frmMain : Form
     private readonly IScrapingService _scrapingService;
     private readonly ISettingsProvider _settingsProvider;
     private readonly IMatchLinkRegistry _matchLinkRegistry;
+    private readonly IClasificacionService _clasificacionService;
     private CancellationTokenSource? _cancelacion;
 
     /// <summary>
@@ -35,6 +37,7 @@ public partial class frmMain : Form
         _scrapingService = services.GetRequiredService<IScrapingService>();
         _settingsProvider = services.GetRequiredService<ISettingsProvider>();
         _matchLinkRegistry = services.GetRequiredService<IMatchLinkRegistry>();
+        _clasificacionService = services.GetRequiredService<IClasificacionService>();
     }
 
     /// <summary>
@@ -221,8 +224,9 @@ public partial class frmMain : Form
     }
 
     /// <summary>
-    /// Clasificación → Organizar: agrupa los archivos del directorio en
-    /// subdirectorios según el patrón extraído del nombre (ancla "tabla").
+    /// Clasificación → Organizar: genera el plan a partir del directorio
+    /// seleccionado, muestra una vista previa de los grupos y, si el usuario
+    /// confirma, crea los subdirectorios y mueve los archivos.
     /// </summary>
     private void btnClasificacionOrganizar_Click(object sender, EventArgs e)
     {
@@ -231,11 +235,107 @@ public partial class frmMain : Form
             return;
         }
 
+        ClasificacionPlan plan;
+        try
+        {
+            plan = _clasificacionService.GenerarPlan(_directorioClasificacion!);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"No se pudo analizar el directorio:{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
+        if (plan.TotalArchivosAMover == 0)
+        {
+            MessageBox.Show(
+                "No se encontraron archivos clasificables en el directorio seleccionado.",
+                "Nada por organizar",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        string vistaPrevia = ConstruirVistaPrevia(plan);
+
+        if (MessageBox.Show(
+                vistaPrevia,
+                "Vista previa de organización",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        ClasificacionResultado resultado;
+        try
+        {
+            resultado = _clasificacionService.EjecutarPlan(plan);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Ocurrió un error inesperado durante la organización:{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
+        MostrarResultadoOrganizacion(resultado);
+    }
+
+    /// <summary>Construye el texto de vista previa del plan de organización.</summary>
+    private static string ConstruirVistaPrevia(ClasificacionPlan plan)
+    {
+        var detalle = new StringBuilder();
+        detalle.AppendLine($"Directorio: {plan.DirectorioOrigen}");
+        detalle.AppendLine();
+        detalle.AppendLine($"Se crearán/usarán {plan.Grupos.Count} directorio(s):");
+
+        foreach (var grupo in plan.Grupos)
+        {
+            string advertencia = grupo.Sospechoso ? "  [advertencia: un solo archivo]" : string.Empty;
+            detalle.AppendLine($"  {grupo.Patron}  ({grupo.Archivos.Count} archivo(s)){advertencia}");
+        }
+
+        if (plan.SinClasificar.Count > 0)
+        {
+            detalle.AppendLine();
+            detalle.AppendLine($"{plan.SinClasificar.Count} archivo(s) sin ancla 'tabla' no se moverán.");
+        }
+
+        detalle.AppendLine();
+        detalle.Append("¿Desea ejecutar la organización?");
+        return detalle.ToString();
+    }
+
+    /// <summary>Muestra el resultado de la ejecución del plan.</summary>
+    private static void MostrarResultadoOrganizacion(ClasificacionResultado resultado)
+    {
+        if (resultado.Success)
+        {
+            MessageBox.Show(
+                $"Organización finalizada: {resultado.ArchivosMovidos} archivo(s) movidos " +
+                $"en {resultado.DirectoriosCreados} directorio(s) nuevo(s).",
+                "Proceso completado",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        string detalle = string.Join(Environment.NewLine, resultado.Errors.Take(5));
         MessageBox.Show(
-            "El proceso 'Organizar' aún no está implementado.",
-            "En desarrollo",
+            $"Organización finalizada con {resultado.Errors.Count} incidencia(s)." +
+            $"{Environment.NewLine}Se movieron {resultado.ArchivosMovidos} archivo(s)." +
+            $"{Environment.NewLine}{Environment.NewLine}{detalle}",
+            "Proceso completado con advertencias",
             MessageBoxButtons.OK,
-            MessageBoxIcon.Information);
+            MessageBoxIcon.Warning);
     }
 
     /// <summary>
