@@ -34,6 +34,7 @@ public static class Composition
             .AddSingleton<IMatchLinkRegistry, JsonMatchLinkRegistry>()
             .AddSingleton<IScrapingService, LeagueScrapingService>()
             .AddSingleton<IClasificacionService, ClasificacionService>()
+            .AddSingleton<IDepuracionService, DepuracionService>()
             .AddLogging(logging =>
             {
                 logging.SetMinimumLevel(LogLevel.Information);

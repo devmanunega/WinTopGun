@@ -17,6 +17,7 @@ public partial class frmMain : Form
     private readonly ISettingsProvider _settingsProvider;
     private readonly IMatchLinkRegistry _matchLinkRegistry;
     private readonly IClasificacionService _clasificacionService;
+    private readonly IDepuracionService _depuracionService;
     private CancellationTokenSource? _cancelacion;
 
     /// <summary>
@@ -38,6 +39,7 @@ public partial class frmMain : Form
         _settingsProvider = services.GetRequiredService<ISettingsProvider>();
         _matchLinkRegistry = services.GetRequiredService<IMatchLinkRegistry>();
         _clasificacionService = services.GetRequiredService<IClasificacionService>();
+        _depuracionService = services.GetRequiredService<IDepuracionService>();
     }
 
     /// <summary>
@@ -340,7 +342,8 @@ public partial class frmMain : Form
 
     /// <summary>
     /// Clasificación → Depurar: valida la estructura interna (encabezados) de
-    /// los archivos ya agrupados por el proceso de organización.
+    /// los archivos ya agrupados por el proceso de organización y muestra un
+    /// informe con las incidencias detectadas.
     /// </summary>
     private void btnClasificacionDepurar_Click(object sender, EventArgs e)
     {
@@ -349,11 +352,70 @@ public partial class frmMain : Form
             return;
         }
 
-        MessageBox.Show(
-            "El proceso 'Depurar' aún no está implementado.",
-            "En desarrollo",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information);
+        DepuracionInforme informe;
+        try
+        {
+            informe = _depuracionService.Depurar(_directorioClasificacion!);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"No se pudo depurar el directorio:{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
+        MostrarInformeDepuracion(informe);
+    }
+
+    /// <summary>Muestra el informe de depuración agrupado por patrón.</summary>
+    private static void MostrarInformeDepuracion(DepuracionInforme informe)
+    {
+        if (informe.Grupos.Count == 0)
+        {
+            MessageBox.Show(
+                "No se encontraron subdirectorios para depurar. Ejecute primero el proceso 'Organizar'.",
+                "Nada por depurar",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        var detalle = new StringBuilder();
+        detalle.AppendLine($"Directorio: {informe.Directorio}");
+        detalle.AppendLine();
+
+        foreach (var grupo in informe.Grupos)
+        {
+            if (grupo.Consistente)
+            {
+                detalle.AppendLine($"✔ {grupo.Patron}: {grupo.TotalArchivos} archivo(s), encabezados consistentes.");
+                continue;
+            }
+
+            detalle.AppendLine($"⚠ {grupo.Patron}: {grupo.TotalArchivos} archivo(s), {grupo.Incidencias.Count} incidencia(s):");
+
+            foreach (string incidencia in grupo.Incidencias.Take(3))
+            {
+                detalle.AppendLine($"   - {incidencia}");
+            }
+
+            if (grupo.Incidencias.Count > 3)
+            {
+                detalle.AppendLine($"   ... y {grupo.Incidencias.Count - 3} más.");
+            }
+        }
+
+        string titulo = informe.TotalIncidencias == 0 ? "Depuración sin incidencias" : "Depuración con incidencias";
+        MessageBoxIcon icono = informe.TotalIncidencias == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning;
+
+        detalle.AppendLine();
+        detalle.Append($"{informe.TotalArchivos} archivo(s) analizados en {informe.Grupos.Count} grupo(s); " +
+            $"{informe.TotalIncidencias} incidencia(s) en total.");
+
+        MessageBox.Show(detalle.ToString(), titulo, MessageBoxButtons.OK, icono);
     }
 
     /// <summary>
