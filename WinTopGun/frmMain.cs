@@ -17,6 +17,12 @@ public partial class frmMain : Form
     private readonly IMatchLinkRegistry _matchLinkRegistry;
     private CancellationTokenSource? _cancelacion;
 
+    /// <summary>
+    /// Directorio seleccionado para los procesos de clasificación
+    /// (organizar y depurar). Se elige con el botón "Directorio".
+    /// </summary>
+    private string? _directorioClasificacion;
+
     /// <summary>Constructor usado por el diseñador y por <see cref="Program"/>.</summary>
     public frmMain() : this(Composition.Services)
     {
@@ -183,6 +189,92 @@ public partial class frmMain : Form
     {
         _cancelacion?.Cancel();
         lblEstado.Text = "Cancelando...";
+    }
+
+    /// <summary>
+    /// Clasificación → Directorio: selecciona la carpeta cuyos archivos se
+    /// organizarán y depurarán según el patrón anclado en la palabra "tabla"
+    /// (ver Ideas/Clasificacion.md).
+    /// </summary>
+    private void btnClasificacionDirectorio_Click(object sender, EventArgs e)
+    {
+        using var dialogo = new FolderBrowserDialog
+        {
+            Description = "Seleccione el directorio cuyos archivos desea clasificar.",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = false
+        };
+
+        if (!string.IsNullOrWhiteSpace(_directorioClasificacion)
+            && Directory.Exists(_directorioClasificacion))
+        {
+            dialogo.SelectedPath = _directorioClasificacion;
+        }
+
+        if (dialogo.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _directorioClasificacion = dialogo.SelectedPath;
+        lblEstado.Text = $"Directorio de clasificación: {_directorioClasificacion}";
+    }
+
+    /// <summary>
+    /// Clasificación → Organizar: agrupa los archivos del directorio en
+    /// subdirectorios según el patrón extraído del nombre (ancla "tabla").
+    /// </summary>
+    private void btnClasificacionOrganizar_Click(object sender, EventArgs e)
+    {
+        if (!ValidarDirectorioClasificacion())
+        {
+            return;
+        }
+
+        MessageBox.Show(
+            "El proceso 'Organizar' aún no está implementado.",
+            "En desarrollo",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
+
+    /// <summary>
+    /// Clasificación → Depurar: valida la estructura interna (encabezados) de
+    /// los archivos ya agrupados por el proceso de organización.
+    /// </summary>
+    private void btnClasificacionDepurar_Click(object sender, EventArgs e)
+    {
+        if (!ValidarDirectorioClasificacion())
+        {
+            return;
+        }
+
+        MessageBox.Show(
+            "El proceso 'Depurar' aún no está implementado.",
+            "En desarrollo",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
+
+    /// <summary>
+    /// Verifica que se haya seleccionado un directorio válido para los
+    /// procesos de clasificación; si no, lo informa al usuario.
+    /// </summary>
+    private bool ValidarDirectorioClasificacion()
+    {
+        if (!string.IsNullOrWhiteSpace(_directorioClasificacion)
+            && Directory.Exists(_directorioClasificacion))
+        {
+            return true;
+        }
+
+        MessageBox.Show(
+            "Primero seleccione el directorio a clasificar (botón Directorio).",
+            "Directorio no seleccionado",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+
+        return false;
     }
 
     private void MostrarResultado(ScrapingResult resultado)

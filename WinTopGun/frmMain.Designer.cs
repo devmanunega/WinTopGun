@@ -37,6 +37,11 @@ namespace WinTopGun
             grpExtraccion = new GroupBox();
             flowProcesos = new FlowLayoutPanel();
             grpControl = new GroupBox();
+            grpClasificacion = new GroupBox();
+            flowClasificacion = new FlowLayoutPanel();
+            btnClasificacionDirectorio = new Button();
+            btnClasificacionOrganizar = new Button();
+            btnClasificacionDepurar = new Button();
             btnExtract = new Button();
             btnCancelar = new Button();
             panelEstado = new Panel();
@@ -50,6 +55,8 @@ namespace WinTopGun
             grpExtraccion.SuspendLayout();
             flowProcesos.SuspendLayout();
             grpControl.SuspendLayout();
+            grpClasificacion.SuspendLayout();
+            flowClasificacion.SuspendLayout();
             panelEstado.SuspendLayout();
             SuspendLayout();
             // 
@@ -93,6 +100,7 @@ namespace WinTopGun
             // 
             flowLayoutPanel1.Controls.Add(grpExtraccion);
             flowLayoutPanel1.Controls.Add(grpControl);
+            flowLayoutPanel1.Controls.Add(grpClasificacion);
             flowLayoutPanel1.Dock = DockStyle.Fill;
             flowLayoutPanel1.Location = new Point(0, 24);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
@@ -138,6 +146,71 @@ namespace WinTopGun
             grpControl.TabIndex = 1;
             grpControl.TabStop = false;
             grpControl.Text = "Control";
+            // 
+            // grpClasificacion
+            // 
+            grpClasificacion.AutoSize = true;
+            grpClasificacion.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            grpClasificacion.Controls.Add(flowClasificacion);
+            grpClasificacion.Location = new Point(3, 104);
+            grpClasificacion.Name = "grpClasificacion";
+            grpClasificacion.Padding = new Padding(3);
+            grpClasificacion.Size = new Size(386, 95);
+            grpClasificacion.TabIndex = 2;
+            grpClasificacion.TabStop = false;
+            grpClasificacion.Text = "Clasificación";
+            // 
+            // flowClasificacion
+            // 
+            flowClasificacion.AutoSize = true;
+            flowClasificacion.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            flowClasificacion.Controls.Add(btnClasificacionDirectorio);
+            flowClasificacion.Controls.Add(btnClasificacionOrganizar);
+            flowClasificacion.Controls.Add(btnClasificacionDepurar);
+            flowClasificacion.Dock = DockStyle.Fill;
+            flowClasificacion.Location = new Point(6, 21);
+            flowClasificacion.Name = "flowClasificacion";
+            flowClasificacion.Size = new Size(374, 68);
+            flowClasificacion.TabIndex = 0;
+            // 
+            // btnClasificacionDirectorio
+            // 
+            btnClasificacionDirectorio.Image = Properties.Resources.icons8_prismaticos_50;
+            btnClasificacionDirectorio.Location = new Point(3, 3);
+            btnClasificacionDirectorio.Name = "btnClasificacionDirectorio";
+            btnClasificacionDirectorio.Size = new Size(118, 57);
+            btnClasificacionDirectorio.TabIndex = 0;
+            btnClasificacionDirectorio.Text = "Directorio";
+            btnClasificacionDirectorio.TextAlign = ContentAlignment.MiddleRight;
+            btnClasificacionDirectorio.TextImageRelation = TextImageRelation.TextBeforeImage;
+            btnClasificacionDirectorio.UseVisualStyleBackColor = true;
+            btnClasificacionDirectorio.Click += btnClasificacionDirectorio_Click;
+            // 
+            // btnClasificacionOrganizar
+            // 
+            btnClasificacionOrganizar.Image = Properties.Resources.icons8_prismaticos_50;
+            btnClasificacionOrganizar.Location = new Point(127, 3);
+            btnClasificacionOrganizar.Name = "btnClasificacionOrganizar";
+            btnClasificacionOrganizar.Size = new Size(118, 57);
+            btnClasificacionOrganizar.TabIndex = 1;
+            btnClasificacionOrganizar.Text = "Organizar";
+            btnClasificacionOrganizar.TextAlign = ContentAlignment.MiddleRight;
+            btnClasificacionOrganizar.TextImageRelation = TextImageRelation.TextBeforeImage;
+            btnClasificacionOrganizar.UseVisualStyleBackColor = true;
+            btnClasificacionOrganizar.Click += btnClasificacionOrganizar_Click;
+            // 
+            // btnClasificacionDepurar
+            // 
+            btnClasificacionDepurar.Image = Properties.Resources.icons8_prismaticos_50;
+            btnClasificacionDepurar.Location = new Point(251, 3);
+            btnClasificacionDepurar.Name = "btnClasificacionDepurar";
+            btnClasificacionDepurar.Size = new Size(118, 57);
+            btnClasificacionDepurar.TabIndex = 2;
+            btnClasificacionDepurar.Text = "Depurar";
+            btnClasificacionDepurar.TextAlign = ContentAlignment.MiddleRight;
+            btnClasificacionDepurar.TextImageRelation = TextImageRelation.TextBeforeImage;
+            btnClasificacionDepurar.UseVisualStyleBackColor = true;
+            btnClasificacionDepurar.Click += btnClasificacionDepurar_Click;
             // 
             // btnExtract
             // 
@@ -248,6 +321,8 @@ namespace WinTopGun
             grpExtraccion.ResumeLayout(false);
             flowProcesos.ResumeLayout(false);
             grpControl.ResumeLayout(false);
+            grpClasificacion.ResumeLayout(false);
+            flowClasificacion.ResumeLayout(false);
             panelEstado.ResumeLayout(false);
             ResumeLayout(false);
             PerformLayout();
@@ -264,6 +339,11 @@ namespace WinTopGun
         private GroupBox grpExtraccion;
         private FlowLayoutPanel flowProcesos;
         private GroupBox grpControl;
+        private GroupBox grpClasificacion;
+        private FlowLayoutPanel flowClasificacion;
+        private Button btnClasificacionDirectorio;
+        private Button btnClasificacionOrganizar;
+        private Button btnClasificacionDepurar;
         private Button btnExtract;
         private Button btnCancelar;
         private Panel panelEstado;
