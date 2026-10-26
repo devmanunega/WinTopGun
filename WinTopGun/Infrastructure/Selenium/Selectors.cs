@@ -47,8 +47,11 @@ public static class Selectors
     public static readonly By MatchReportCellLink =
         By.XPath(".//td[@data-stat='match_report']/a[normalize-space(text())='Match Report']");
 
-    /// <summary>Div con el marcador del partido en la página de detalle (no es una tabla).</summary>
-    public static readonly By Scorebox = By.Id("scorebox");
+    /// <summary>
+    /// Div del marcador del partido en la página de detalle. No tiene <c>id</c>:
+    /// se localiza por su clase CSS (<c>&lt;div class="scorebox"&gt;</c>).
+    /// </summary>
+    public static readonly By Scorebox = By.CssSelector("div.scorebox");
 
     /// <summary>Div con los datos de campo del partido en la página de detalle (no es una tabla).</summary>
     public static readonly By FieldWrap = By.Id("field_wrap");

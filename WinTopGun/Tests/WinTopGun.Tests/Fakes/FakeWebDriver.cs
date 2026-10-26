@@ -184,6 +184,17 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
                 : [];
         }
 
+        // Selectores por clase (p. ej. "div.scorebox"): el nombre de la clase
+        // actúa como clave para localizar el div en ExtraElementsById.
+        if (by.Criteria.StartsWith("div.", StringComparison.Ordinal) && !by.Criteria.Contains(' '))
+        {
+            string className = by.Criteria["div.".Length..];
+
+            return ExtraElementsById.TryGetValue(className, out var content)
+                ? [new FakeWebElement($"div {className}", className, innerText: content)]
+                : [];
+        }
+
         return [];
     }
 
