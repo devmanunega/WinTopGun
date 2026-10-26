@@ -379,6 +379,29 @@ public sealed class LeagueScrapingServiceTests
     }
 
     [Fact]
+    public async Task Partidos_ElementosNoTabla_ExportaHtmlExterno()
+    {
+        // Arrange: scorebox y field_wrap no son <table>: se exporta su outerHTML;
+        // scorebox_meta y events_wrap siguen exportándose como texto (innerText).
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 1);
+        var service = CreateService(driver, out _, out var exporter);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
+
+        // Assert
+        Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
+        Assert.Contains(
+            "<div class=\"scorebox\">",
+            exporter.Exports.Single(e => e.TableId == "scorebox").Content);
+        Assert.Contains(
+            "<div id=\"field_wrap\">",
+            exporter.Exports.Single(e => e.TableId == "field_wrap").Content);
+        Assert.DoesNotContain("<div", exporter.Exports.Single(e => e.TableId == "scorebox_meta").Content);
+        Assert.DoesNotContain("<div", exporter.Exports.Single(e => e.TableId == "events_wrap").Content);
+    }
+
+    [Fact]
     public async Task Partidos_SoloProcesaPartidosConMatchReport()
     {
         // Arrange: la tabla del equipo tiene 3 filas; la tercera es un partido pendiente sin reporte.

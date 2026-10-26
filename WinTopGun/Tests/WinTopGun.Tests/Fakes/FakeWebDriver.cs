@@ -180,18 +180,28 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
             }
 
             return ExtraElementsById.TryGetValue(elementId, out var content)
-                ? [new FakeWebElement($"div {elementId}", elementId, innerText: content)]
+                ? [new FakeWebElement(
+                    $"div {elementId}",
+                    elementId,
+                    innerText: content,
+                    outerHtml: $"<div id=\"{elementId}\">{content}</div>")]
                 : [];
         }
 
         // Selectores por clase (p. ej. "div.scorebox"): el nombre de la clase
-        // actúa como clave para localizar el div en ExtraElementsById.
+        // actúa como clave para localizar el div en ExtraElementsById. El HTML
+        // externo se devuelve envuelto en el markup correspondiente, para que
+        // los tests puedan verificar que el proceso extrae outerHTML (y no texto).
         if (by.Criteria.StartsWith("div.", StringComparison.Ordinal) && !by.Criteria.Contains(' '))
         {
             string className = by.Criteria["div.".Length..];
 
             return ExtraElementsById.TryGetValue(className, out var content)
-                ? [new FakeWebElement($"div {className}", className, innerText: content)]
+                ? [new FakeWebElement(
+                    $"div {className}",
+                    className,
+                    innerText: content,
+                    outerHtml: $"<div class=\"{className}\">{content}</div>")]
                 : [];
         }
 

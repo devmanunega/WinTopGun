@@ -10,6 +10,7 @@ internal sealed class FakeWebElement(
     string text,
     string? id = null,
     string? innerText = null,
+    string? outerHtml = null,
     string? href = null,
     string? dataRow = null,
     Func<string, ReadOnlyCollection<IWebElement>?>? findElementsHandler = null) : IWebElement
@@ -48,8 +49,12 @@ internal sealed class FakeWebElement(
         _ => throw new NoSuchElementException($"Atributo '{attributeName}' no disponible."),
     };
 
-    public string GetDomProperty(string propertyName) =>
-        propertyName == "innerText" ? (innerText ?? throw new NotImplementedException()) : throw new NotImplementedException();
+    public string GetDomProperty(string propertyName) => propertyName switch
+    {
+        "innerText" => innerText ?? throw new NotImplementedException(),
+        "outerHTML" => outerHtml ?? throw new NotImplementedException(),
+        _ => throw new NotImplementedException(),
+    };
 
     public string GetDomAttribute(string attributeName) => throw new NotImplementedException();
 

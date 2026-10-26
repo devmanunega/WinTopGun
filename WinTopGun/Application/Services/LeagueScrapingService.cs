@@ -548,9 +548,12 @@ public sealed class LeagueScrapingService : IScrapingService
 
                 // Elementos adicionales de la página de detalle del partido. Son
                 // complementarios: su ausencia no impide registrar el partido como
-                // procesado (en FBref el div scorebox_meta no existe en todas las páginas).
-                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.Scorebox, "scorebox", result, cancellationToken, esOpcional: true);
-                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.FieldWrap, "field_wrap", result, cancellationToken, esOpcional: true);
+                // procesado. Los divs scorebox y field_wrap no son tablas: se exporta
+                // su HTML externo (outerHTML). scorebox_meta y events_wrap se exportan
+                // como texto (innerText); en FBref scorebox_meta no existe en todas
+                // las páginas.
+                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.Scorebox, "scorebox", result, cancellationToken, esOpcional: true, usarHtmlExterno: true);
+                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.FieldWrap, "field_wrap", result, cancellationToken, esOpcional: true, usarHtmlExterno: true);
                 ExportElementContent(driver, matchDirectory, pageSegment, Selectors.ScoreboxMeta, "scorebox_meta", result, cancellationToken, esOpcional: true);
                 ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken, esOpcional: true);
 
@@ -678,13 +681,20 @@ public sealed class LeagueScrapingService : IScrapingService
     }
 
     /// <summary>
-    /// Extrae el contenido de texto de un elemento (p. ej. los divs
-    /// <c>scorebox</c>, <c>field_wrap</c>, <c>scorebox_meta</c> y <c>events_wrap</c>)
-    /// y lo exporta con el mismo mecanismo usado para las tablas.
+    /// Extrae el contenido de un elemento y lo exporta con el mismo mecanismo
+    /// usado para las tablas. Para elementos que no son tablas (los divs
+    /// <c>scorebox</c> y <c>field_wrap</c>) se extrae su HTML externo
+    /// (<c>outerHTML</c>, con <paramref name="usarHtmlExterno"/>); para el resto
+    /// (p. ej. <c>scorebox_meta</c> y <c>events_wrap</c>) se extrae el texto
+    /// (<c>innerText</c>).
     /// </summary>
     /// <param name="esOpcional">
     /// Si es verdadero, la ausencia o obsolescencia del elemento solo genera una
     /// advertencia (no impide que el partido se registre como procesado).
+    /// </param>
+    /// <param name="usarHtmlExterno">
+    /// Si es verdadero, se exporta el <c>outerHTML</c> del elemento en lugar de
+    /// su texto (<c>innerText</c>).
     /// </param>
     private void ExportElementContent(
         IWebDriver driver,
@@ -694,14 +704,15 @@ public sealed class LeagueScrapingService : IScrapingService
         string elementId,
         ScrapingResult result,
         CancellationToken cancellationToken,
-        bool esOpcional = false)
+        bool esOpcional = false,
+        bool usarHtmlExterno = false)
     {
         try
         {
             IWebElement element = driver.FindElement(locator);
-            string content = element.GetDomProperty("innerText")
-                ?? element.GetAttribute("innerText")
-                ?? string.Empty;
+            string content = usarHtmlExterno
+                ? element.GetDomProperty("outerHTML") ?? element.GetAttribute("outerHTML") ?? string.Empty
+                : element.GetDomProperty("innerText") ?? element.GetAttribute("innerText") ?? string.Empty;
 
             _exporter.ExportTableAsync(outputDirectory, pageSegment, elementId, content, cancellationToken)
                 .GetAwaiter()
