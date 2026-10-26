@@ -335,6 +335,8 @@ public sealed class LeagueScrapingServiceTests
             MatchLinkTexts = matchLinkTexts,
             ExtraElementsById = new Dictionary<string, string>
             {
+                ["scorebox"] = "marcador del partido",
+                ["field_wrap"] = "datos de campo del partido",
                 ["scorebox_meta"] = "metadatos del partido",
                 ["events_wrap"] = "eventos del partido",
             },
@@ -355,12 +357,15 @@ public sealed class LeagueScrapingServiceTests
         // Act
         ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
 
-        // Assert: por partido se exportan 3 tablas con id + scorebox_meta + events_wrap = 5; dos partidos = 10.
+        // Assert: por partido se exportan 3 tablas con id + scorebox + field_wrap
+        // + scorebox_meta + events_wrap = 7; dos partidos = 14.
         Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
         Assert.Equal(1, resultado.LeaguesProcessed);
-        Assert.Equal(10, resultado.TablesExported);
-        Assert.Equal(10, exporter.Exports.Count);
+        Assert.Equal(14, resultado.TablesExported);
+        Assert.Equal(14, exporter.Exports.Count);
         Assert.All(exporter.Exports, e => Assert.Equal(expectedDirectory, e.OutputDirectory));
+        Assert.Equal(2, exporter.Exports.Count(e => e.TableId == "scorebox"));
+        Assert.Equal(2, exporter.Exports.Count(e => e.TableId == "field_wrap"));
         Assert.Equal(2, exporter.Exports.Count(e => e.TableId == "scorebox_meta"));
         Assert.Equal(2, exporter.Exports.Count(e => e.TableId == "events_wrap"));
 
@@ -383,10 +388,10 @@ public sealed class LeagueScrapingServiceTests
         // Act
         ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
 
-        // Assert: solo los 2 partidos disputados generan exportaciones (3 tablas + 2 divs cada uno).
+        // Assert: solo los 2 partidos disputados generan exportaciones (3 tablas + 4 divs cada uno).
         Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
-        Assert.Equal(10, resultado.TablesExported);
-        Assert.Equal(10, exporter.Exports.Count);
+        Assert.Equal(14, resultado.TablesExported);
+        Assert.Equal(14, exporter.Exports.Count);
         Assert.Contains("https://sitio-de-prueba.test/partidos/partido-1", driver.VisitedUrls);
         Assert.Contains("https://sitio-de-prueba.test/partidos/partido-2", driver.VisitedUrls);
         Assert.DoesNotContain("https://sitio-de-prueba.test/partidos/partido-3", driver.VisitedUrls);
@@ -445,7 +450,7 @@ public sealed class LeagueScrapingServiceTests
         // Assert: el equipo 1 procesa solo partido-2; el equipo 2 omite ambos.
         Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
         Assert.Equal(3, resultado.MatchesSkipped);
-        Assert.Equal(5, exporter.Exports.Count); // 1 partido × (3 tablas + 2 divs)
+        Assert.Equal(7, exporter.Exports.Count); // 1 partido × (3 tablas + 4 divs)
         Assert.Single(driver.VisitedUrls.Where(u => u.Contains("/partidos/") && u.Contains("partido-2")));
         Assert.DoesNotContain(driver.VisitedUrls, u => u.Contains("/partidos/") && u.Contains("partido-1"));
         Assert.Equal(2, registry.ProcessedCount); // 1 previo + 1 nuevo
@@ -539,15 +544,15 @@ public sealed class LeagueScrapingServiceTests
         Assert.False(resultado.Success);
         Assert.Equal(0, registry.ProcessedCount);
         Assert.Equal(1, registry.MarkFailedCalls);
-        Assert.Equal(4, exporter.Exports.Count); // 2 tablas con id restantes + scorebox_meta + events_wrap
+        Assert.Equal(6, exporter.Exports.Count); // 2 tablas con id restantes + scorebox + field_wrap + scorebox_meta + events_wrap
     }
 
     [Fact]
     public async Task Partidos_Interrupcion_ConservaProgresoYaRegistrado()
     {
-        // Arrange: el primer partido se procesa por completo (3 tablas + scorebox_meta
-        // + events_wrap = 5 exportaciones); la primera exportación del segundo partido
-        // lanza IOException (interrupción simulada).
+        // Arrange: el primer partido se procesa por completo (3 tablas + scorebox
+        // + field_wrap + scorebox_meta + events_wrap = 7 exportaciones); la primera
+        // exportación del segundo partido lanza IOException (interrupción simulada).
         var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 2);
         var registry = new FakeMatchLinkRegistry();
         var factory = new FakeDriverFactory(driver);
@@ -561,7 +566,7 @@ public sealed class LeagueScrapingServiceTests
         };
         var service = new LeagueScrapingService(
             factory,
-            new FailAfterExporter(maxSuccesses: 5),
+            new FailAfterExporter(maxSuccesses: 7),
             registry,
             options,
             NullLogger<LeagueScrapingService>.Instance);
@@ -670,12 +675,12 @@ public sealed class LeagueScrapingServiceTests
         // Act
         ScrapingResult resultado = await service.ExtractCurrentLeagueMatchDetailsAsync(OutputDirectory);
 
-        // Assert: 2 partidos × (3 tablas + 2 divs) = 10; el equipo 2 omite los ya
+        // Assert: 2 partidos × (3 tablas + 4 divs) = 14; el equipo 2 omite los ya
         // procesados por el 1 (mismo MatchId).
         Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
         Assert.Equal(1, resultado.LeaguesProcessed);
-        Assert.Equal(10, resultado.TablesExported);
-        Assert.Equal(10, exporter.Exports.Count);
+        Assert.Equal(14, resultado.TablesExported);
+        Assert.Equal(14, exporter.Exports.Count);
         Assert.All(exporter.Exports, e => Assert.Equal(expectedDirectory, e.OutputDirectory));
         Assert.Equal(2, driver.VisitedUrls.Count(u => u.Contains("/equipos/")));
         Assert.Equal(2, driver.VisitedUrls.Count(u => u.Contains("/partidos/")));
@@ -720,7 +725,7 @@ public sealed class LeagueScrapingServiceTests
         // Assert: solo se procesa partido-2.
         Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
         Assert.Equal(1, resultado.MatchesSkipped);
-        Assert.Equal(5, exporter.Exports.Count); // 1 partido × (3 tablas + 2 divs)
+        Assert.Equal(7, exporter.Exports.Count); // 1 partido × (3 tablas + 4 divs)
         Assert.Single(driver.VisitedUrls.Where(u => u.Contains("/partidos/") && u.Contains("partido-2")));
         Assert.DoesNotContain(driver.VisitedUrls, u => u.Contains("/partidos/") && u.Contains("partido-1"));
     }

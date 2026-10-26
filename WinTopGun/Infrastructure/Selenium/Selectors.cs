@@ -47,6 +47,12 @@ public static class Selectors
     public static readonly By MatchReportCellLink =
         By.XPath(".//td[@data-stat='match_report']/a[normalize-space(text())='Match Report']");
 
+    /// <summary>Div con el marcador del partido en la página de detalle (no es una tabla).</summary>
+    public static readonly By Scorebox = By.Id("scorebox");
+
+    /// <summary>Div con los datos de campo del partido en la página de detalle (no es una tabla).</summary>
+    public static readonly By FieldWrap = By.Id("field_wrap");
+
     /// <summary>Div de metadatos del partido en la página de detalle.</summary>
     public static readonly By ScoreboxMeta = By.Id("scorebox_meta");
 

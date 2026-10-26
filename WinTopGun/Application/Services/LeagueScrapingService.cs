@@ -549,6 +549,8 @@ public sealed class LeagueScrapingService : IScrapingService
                 // Elementos adicionales de la página de detalle del partido. Son
                 // complementarios: su ausencia no impide registrar el partido como
                 // procesado (en FBref el div scorebox_meta no existe en todas las páginas).
+                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.Scorebox, "scorebox", result, cancellationToken, esOpcional: true);
+                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.FieldWrap, "field_wrap", result, cancellationToken, esOpcional: true);
                 ExportElementContent(driver, matchDirectory, pageSegment, Selectors.ScoreboxMeta, "scorebox_meta", result, cancellationToken, esOpcional: true);
                 ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken, esOpcional: true);
 
@@ -677,8 +679,8 @@ public sealed class LeagueScrapingService : IScrapingService
 
     /// <summary>
     /// Extrae el contenido de texto de un elemento (p. ej. los divs
-    /// <c>scorebox_meta</c> y <c>events_wrap</c>) y lo exporta con el mismo
-    /// mecanismo usado para las tablas.
+    /// <c>scorebox</c>, <c>field_wrap</c>, <c>scorebox_meta</c> y <c>events_wrap</c>)
+    /// y lo exporta con el mismo mecanismo usado para las tablas.
     /// </summary>
     /// <param name="esOpcional">
     /// Si es verdadero, la ausencia o obsolescencia del elemento solo genera una
