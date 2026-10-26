@@ -126,8 +126,9 @@ public partial class frmMain : Form
     /// Proceso de partidos: recorre las ligas, recolecta de la tabla de posiciones
     /// (primera tabla con <c>id</c>) los enlaces "Match Report" de cada equipo,
     /// los identifica por hash en un registro persistente y abre solo los no
-    /// procesados. De cada página extrae las tablas con <c>id</c> y los divs
-    /// <c>scorebox_meta</c> y <c>events_wrap</c>, en la subcarpeta
+    /// procesados. De cada página extrae las tablas con <c>id</c>, los divs
+    /// <c>scorebox</c>, <c>field_wrap</c> y <c>events_wrap</c> (como outerHTML)
+    /// y el div <c>scorebox_meta</c> (como texto), en la subcarpeta
     /// <c>Detalles_Partidos</c>.
     /// </summary>
     private async void btnExtractPartidos_Click(object sender, EventArgs e) =>

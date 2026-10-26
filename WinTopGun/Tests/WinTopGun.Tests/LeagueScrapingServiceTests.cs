@@ -381,8 +381,8 @@ public sealed class LeagueScrapingServiceTests
     [Fact]
     public async Task Partidos_ElementosNoTabla_ExportaHtmlExterno()
     {
-        // Arrange: scorebox y field_wrap no son <table>: se exporta su outerHTML;
-        // scorebox_meta y events_wrap siguen exportándose como texto (innerText).
+        // Arrange: scorebox, field_wrap y events_wrap no son <table>: se exporta
+        // su outerHTML; scorebox_meta sigue exportándose como texto (innerText).
         var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 1);
         var service = CreateService(driver, out _, out var exporter);
 
@@ -397,8 +397,10 @@ public sealed class LeagueScrapingServiceTests
         Assert.Contains(
             "<div id=\"field_wrap\">",
             exporter.Exports.Single(e => e.TableId == "field_wrap").Content);
+        Assert.Contains(
+            "<div id=\"events_wrap\">",
+            exporter.Exports.Single(e => e.TableId == "events_wrap").Content);
         Assert.DoesNotContain("<div", exporter.Exports.Single(e => e.TableId == "scorebox_meta").Content);
-        Assert.DoesNotContain("<div", exporter.Exports.Single(e => e.TableId == "events_wrap").Content);
     }
 
     [Fact]

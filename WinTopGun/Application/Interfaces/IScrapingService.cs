@@ -40,8 +40,9 @@ public interface IScrapingService
     /// valor "Match Report". Cada enlace se identifica con su <c>MatchId</c> y se
     /// registra en una estructura persistida a nivel de aplicación; solo se abren
     /// los enlaces sin procesar. De cada página de partido se extraen las tablas
-    /// con <c>id</c>, el div <c>scorebox_meta</c> y el div <c>events_wrap</c>,
-    /// guardados en la subcarpeta <c>Detalles_Partidos</c>. En caso de
+    /// con <c>id</c>, los divs <c>scorebox</c>, <c>field_wrap</c> y
+    /// <c>events_wrap</c> (como outerHTML) y el div <c>scorebox_meta</c> (como
+    /// texto), guardados en la subcarpeta <c>Detalles_Partidos</c>. En caso de
     /// interrupción, la siguiente ejecución procesa solo los partidos pendientes.
     /// </summary>
     /// <param name="outputDirectory">Directorio base de los archivos generados.</param>

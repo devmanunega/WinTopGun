@@ -548,14 +548,14 @@ public sealed class LeagueScrapingService : IScrapingService
 
                 // Elementos adicionales de la página de detalle del partido. Son
                 // complementarios: su ausencia no impide registrar el partido como
-                // procesado. Los divs scorebox y field_wrap no son tablas: se exporta
-                // su HTML externo (outerHTML). scorebox_meta y events_wrap se exportan
-                // como texto (innerText); en FBref scorebox_meta no existe en todas
-                // las páginas.
+                // procesado. Los divs scorebox, field_wrap y events_wrap no son
+                // tablas: se exporta su HTML externo (outerHTML); scorebox_meta se
+                // exporta como texto (innerText) y en FBref no existe en todas las
+                // páginas.
                 ExportElementContent(driver, matchDirectory, pageSegment, Selectors.Scorebox, "scorebox", result, cancellationToken, esOpcional: true, usarHtmlExterno: true);
                 ExportElementContent(driver, matchDirectory, pageSegment, Selectors.FieldWrap, "field_wrap", result, cancellationToken, esOpcional: true, usarHtmlExterno: true);
                 ExportElementContent(driver, matchDirectory, pageSegment, Selectors.ScoreboxMeta, "scorebox_meta", result, cancellationToken, esOpcional: true);
-                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken, esOpcional: true);
+                ExportElementContent(driver, matchDirectory, pageSegment, Selectors.EventsWrap, "events_wrap", result, cancellationToken, esOpcional: true, usarHtmlExterno: true);
 
                 // 2.4: marcar según el resultado — Processed solo si la exportación
                 // fue limpia; Failed (reintento en la próxima ejecución) si hubo
@@ -683,9 +683,9 @@ public sealed class LeagueScrapingService : IScrapingService
     /// <summary>
     /// Extrae el contenido de un elemento y lo exporta con el mismo mecanismo
     /// usado para las tablas. Para elementos que no son tablas (los divs
-    /// <c>scorebox</c> y <c>field_wrap</c>) se extrae su HTML externo
-    /// (<c>outerHTML</c>, con <paramref name="usarHtmlExterno"/>); para el resto
-    /// (p. ej. <c>scorebox_meta</c> y <c>events_wrap</c>) se extrae el texto
+    /// <c>scorebox</c>, <c>field_wrap</c> y <c>events_wrap</c>) se extrae su
+    /// HTML externo (<c>outerHTML</c>, con <paramref name="usarHtmlExterno"/>);
+    /// para el resto (p. ej. <c>scorebox_meta</c>) se extrae el texto
     /// (<c>innerText</c>).
     /// </summary>
     /// <param name="esOpcional">
