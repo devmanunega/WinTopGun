@@ -40,6 +40,22 @@ public partial class frmMain : Form
         _matchLinkRegistry = services.GetRequiredService<IMatchLinkRegistry>();
         _clasificacionService = services.GetRequiredService<IClasificacionService>();
         _depuracionService = services.GetRequiredService<IDepuracionService>();
+
+        // Mostrar desde el arranque el directorio destino configurado: evita que
+        // una extracción se ejecute contra una ruta que el usuario creía cambiada.
+        ActualizarEstadoDirectorioDestino();
+    }
+
+    /// <summary>
+    /// Refleja en la barra de estado el directorio destino actualmente
+    /// configurado, para que siempre sea visible antes de extraer.
+    /// </summary>
+    private void ActualizarEstadoDirectorioDestino()
+    {
+        string ruta = _settingsProvider.OutputDirectory;
+        lblEstado.Text = string.IsNullOrWhiteSpace(ruta)
+            ? "Directorio destino: (sin configurar) — Opciones → Directorio destino"
+            : $"Directorio destino: {ruta}";
     }
 
     /// <summary>
@@ -86,6 +102,9 @@ public partial class frmMain : Form
     {
         using var frmConfiguracion = new frmConfiguracion(_settingsProvider);
         frmConfiguracion.ShowDialog(this);
+
+        // Al cerrar la configuración, refrescar la ruta mostrada (pudo cambiar).
+        ActualizarEstadoDirectorioDestino();
     }
 
     /// <summary>Proceso de equipos: recorre las ligas y extrae sus tablas con <c>id</c>.</summary>
@@ -167,7 +186,7 @@ public partial class frmMain : Form
             ScrapingResult resultado = await operacion(_scrapingService, outputDirectory, progress, _cancelacion.Token)
                 .ConfigureAwait(true);
 
-            MostrarResultado(resultado);
+            MostrarResultado(resultado, outputDirectory);
         }
         catch (OperationCanceledException)
         {
@@ -439,8 +458,10 @@ public partial class frmMain : Form
         return false;
     }
 
-    private void MostrarResultado(ScrapingResult resultado)
+    private void MostrarResultado(ScrapingResult resultado, string outputDirectory)
     {
+        string destino = $"Los archivos se guardaron en:{Environment.NewLine}{outputDirectory}";
+
         if (resultado.WasCancelled)
         {
             MessageBox.Show("La extracción fue cancelada.", "Información",
@@ -453,7 +474,7 @@ public partial class frmMain : Form
                 : string.Empty;
 
             MessageBox.Show(
-                $"Extracción finalizada: {resultado.TablesExported} tablas exportadas de {resultado.LeaguesProcessed} ligas.{omitidos}",
+                $"Extracción finalizada: {resultado.TablesExported} tablas exportadas de {resultado.LeaguesProcessed} ligas.{omitidos}{Environment.NewLine}{Environment.NewLine}{destino}",
                 "Proceso completado",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -463,7 +484,8 @@ public partial class frmMain : Form
             string detalle = string.Join(Environment.NewLine, resultado.Errors.Take(5));
             MessageBox.Show(
                 $"Extracción finalizada con {resultado.Errors.Count} incidencia(s).{Environment.NewLine}" +
-                $"Se exportaron {resultado.TablesExported} tablas.{Environment.NewLine}{Environment.NewLine}{detalle}",
+                $"Se exportaron {resultado.TablesExported} tablas.{Environment.NewLine}{Environment.NewLine}{detalle}" +
+                $"{Environment.NewLine}{Environment.NewLine}{destino}",
                 "Proceso completado con advertencias",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);

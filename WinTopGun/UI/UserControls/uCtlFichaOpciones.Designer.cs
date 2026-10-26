@@ -32,6 +32,7 @@ namespace WinTopGun.UI.UserControls
             picBoxDirectorio = new PictureBox();
             lblTituloDirectorio = new Label();
             lblSubtituloDirectorio = new Label();
+            lblRutaActual = new Label();
             tableLayoutPanel1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)picBoxDirectorio).BeginInit();
             SuspendLayout();
@@ -46,10 +47,12 @@ namespace WinTopGun.UI.UserControls
             tableLayoutPanel1.Dock = DockStyle.Fill;
             tableLayoutPanel1.Location = new Point(0, 0);
             tableLayoutPanel1.Name = "tableLayoutPanel1";
-            tableLayoutPanel1.RowCount = 3;
+            tableLayoutPanel1.RowCount = 4;
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 60F));
-            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
-            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
+            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 15F));
+            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 15F));
+            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
+            tableLayoutPanel1.Controls.Add(lblRutaActual, 0, 3);
             tableLayoutPanel1.Size = new Size(172, 150);
             tableLayoutPanel1.TabIndex = 0;
             // 
@@ -84,6 +87,18 @@ namespace WinTopGun.UI.UserControls
             lblSubtituloDirectorio.TabIndex = 2;
             lblSubtituloDirectorio.Text = "Ruta para la data obtenida";
             // 
+            // lblRutaActual
+            // 
+            lblRutaActual.AutoEllipsis = true;
+            lblRutaActual.Cursor = Cursors.Hand;
+            lblRutaActual.Dock = DockStyle.Fill;
+            lblRutaActual.ForeColor = SystemColors.GrayText;
+            lblRutaActual.Name = "lblRutaActual";
+            lblRutaActual.Padding = new Padding(0, 3, 0, 0);
+            lblRutaActual.Size = new Size(166, 30);
+            lblRutaActual.TextAlign = ContentAlignment.TopLeft;
+            lblRutaActual.Click += picBoxDirectorio_Click;
+            // 
             // uCtlFichaOpciones
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -104,5 +119,6 @@ namespace WinTopGun.UI.UserControls
         private PictureBox picBoxDirectorio;
         private Label lblTituloDirectorio;
         private Label lblSubtituloDirectorio;
+        private Label lblRutaActual;
     }
 }
