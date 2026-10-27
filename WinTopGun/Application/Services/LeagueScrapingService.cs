@@ -455,6 +455,11 @@ public sealed class LeagueScrapingService : IScrapingService
         IProgress<ScrapingProgress>? progress,
         CancellationToken cancellationToken)
     {
+        // URL de la página de liga: sirve de referencia para volver a ella tras
+        // procesar cada equipo (más robusto que confiar en el historial si la
+        // pestaña compartida cambió de página durante el proceso).
+        string leagueUrl = driver.Url;
+
         // 1: tabla de posiciones = primera tabla con atributo id.
         IWebElement tablaPosiciones = FindStandingsTable(driver);
 
@@ -485,7 +490,7 @@ public sealed class LeagueScrapingService : IScrapingService
             {
                 _logger.LogWarning("El equipo '{Team}' no cargó la tabla de partidos ('matchlogs_for')", teamUrl);
                 result.Errors.Add($"Liga {currentLeague}: el equipo '{teamName}' no cargó la tabla 'matchlogs_for'.");
-                VolverAPaginaDeLiga(driver, wait);
+                VolverAPaginaDeLiga(driver, wait, leagueUrl);
                 continue;
             }
 
@@ -528,16 +533,38 @@ public sealed class LeagueScrapingService : IScrapingService
                 // y pequeños desplazamientos de página antes de extraer los datos.
                 SimularRevisionPartido(driver, cancellationToken);
 
+                // El navegador es compartido con el usuario: durante las pausas la
+                // pestaña activa puede cambiar de página (navegación manual) o el
+                // sitio puede redirigir a otra página. Verificar que siga mostrando
+                // el partido esperado antes de extraer: de lo contrario se exportarían
+                // como "partido" las tablas de una página ajena.
+                if (!EsPaginaDelPartido(driver, target))
+                {
+                    _logger.LogWarning(
+                        "La pestaña activa ya no muestra el partido '{Url}' sino '{Actual}'; no se extrae nada y el partido queda como fallido",
+                        target.Url, driver.Url);
+                    result.Errors.Add($"Liga {currentLeague}: el navegador abandonó la página del partido '{target.Url}'.");
+                    _matchLinkRegistry.MarkFailed(target);
+                    RegresarAPaginaDelEquipo(driver, wait, teamUrl);
+                    continue;
+                }
+
                 try
                 {
                     wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
+
+                    // La presencia del marcador (scorebox) identifica una página de
+                    // partido real. Si no aparece, la página cargada no corresponde a
+                    // un partido (p. ej. una redirección del sitio) y extraer sus
+                    // tablas contaminaría Detalles_Partidos con archivos ajenos.
+                    wait.Until(d => d.FindElements(Selectors.Scorebox).Count > 0);
                 }
                 catch (WebDriverTimeoutException)
                 {
-                    _logger.LogWarning("La página del partido '{Url}' no cargó tablas con 'table[id]'", target.Url);
-                    result.Errors.Add($"Liga {currentLeague}: la página del partido '{target.Url}' no cargó tablas con 'table[id]'.");
+                    _logger.LogWarning("La página del partido '{Url}' no cargó las tablas del partido ('table[id]' o 'scorebox')", target.Url);
+                    result.Errors.Add($"Liga {currentLeague}: la página del partido '{target.Url}' no cargó las tablas del partido.");
                     _matchLinkRegistry.MarkFailed(target);
-                    RegresarAPaginaDelEquipo(driver, wait);
+                    RegresarAPaginaDelEquipo(driver, wait, teamUrl);
                     continue;
                 }
 
@@ -572,31 +599,81 @@ public sealed class LeagueScrapingService : IScrapingService
                 }
 
                 // Volver a la página del equipo antes del siguiente partido.
-                RegresarAPaginaDelEquipo(driver, wait);
+                RegresarAPaginaDelEquipo(driver, wait, teamUrl);
             }
 
             _logger.LogInformation("Equipo '{Team}': {Total} partidos disputados, {Pendientes} procesados en esta ejecución",
                 teamName, targets.Count, pendientes);
 
             // Volver a la página de liga antes del siguiente equipo.
-            VolverAPaginaDeLiga(driver, wait);
+            VolverAPaginaDeLiga(driver, wait, leagueUrl);
         }
     }
 
     /// <summary>Regresa a la página de liga y espera a que su tabla de posiciones esté disponible.</summary>
-    private static void VolverAPaginaDeLiga(IWebDriver driver, WebDriverWait wait)
+    private void VolverAPaginaDeLiga(IWebDriver driver, WebDriverWait wait, string leagueUrl)
     {
         driver.Navigate().Back();
         WaitForPageComplete(driver, wait);
+        VolverALaUrlEsperada(driver, wait, leagueUrl);
         wait.Until(d => d.FindElements(Selectors.TablesWithId).Count > 0);
     }
 
     /// <summary>Regresa a la página del equipo y espera a que su tabla de partidos esté disponible.</summary>
-    private static void RegresarAPaginaDelEquipo(IWebDriver driver, WebDriverWait wait)
+    private void RegresarAPaginaDelEquipo(IWebDriver driver, WebDriverWait wait, string teamUrl)
     {
         driver.Navigate().Back();
         WaitForPageComplete(driver, wait);
+        VolverALaUrlEsperada(driver, wait, teamUrl);
         wait.Until(d => d.FindElements(Selectors.MatchLogsTable).Count > 0);
+    }
+
+    /// <summary>
+    /// Si la pestaña activa ya no muestra la página esperada (el navegador es
+    /// compartido con el usuario y la navegación manual durante las pausas puede
+    /// desviar el proceso, o el historial no devolvió la página prevista), navega
+    /// de vuelta a la URL esperada antes de continuar.
+    /// </summary>
+    private void VolverALaUrlEsperada(IWebDriver driver, WebDriverWait wait, string urlEsperada)
+    {
+        if (EsMismaPagina(driver.Url, urlEsperada))
+        {
+            return;
+        }
+
+        _logger.LogWarning(
+            "La pestaña activa cambió de página (URL actual: {Actual}); se navega de vuelta a {Esperada}",
+            driver.Url, urlEsperada);
+        driver.Navigate().GoToUrl(urlEsperada);
+        WaitForPageComplete(driver, wait);
+    }
+
+    /// <summary>
+    /// Indica si la pestaña activa sigue mostrando el partido esperado. Compara el
+    /// identificador del partido en la URL actual (<see cref="MatchIdExtractor.ExtractId"/>)
+    /// con el del enlace objetivo: es inmune a cambios de slug o de idioma en la URL.
+    /// </summary>
+    private static bool EsPaginaDelPartido(IWebDriver driver, MatchLinkTarget target)
+    {
+        string urlActual = driver.Url;
+        return !string.IsNullOrWhiteSpace(urlActual)
+            && string.Equals(MatchIdExtractor.ExtractId(urlActual), target.MatchId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Indica si dos URLs apuntan a la misma página: mismo host y misma ruta
+    /// (se ignoran esquema, puerto y cadena de consulta).
+    /// </summary>
+    private static bool EsMismaPagina(string urlActual, string urlEsperada)
+    {
+        if (Uri.TryCreate(urlActual, UriKind.Absolute, out var actual)
+            && Uri.TryCreate(urlEsperada, UriKind.Absolute, out var esperada))
+        {
+            return string.Equals(actual.Host, esperada.Host, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(actual.AbsolutePath, esperada.AbsolutePath, StringComparison.Ordinal);
+        }
+
+        return string.Equals(urlActual, urlEsperada, StringComparison.Ordinal);
     }
 
     /// <summary>

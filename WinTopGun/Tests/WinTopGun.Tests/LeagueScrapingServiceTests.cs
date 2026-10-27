@@ -650,19 +650,70 @@ public sealed class LeagueScrapingServiceTests
     {
         // Arrange: la página del partido no contiene los divs scorebox_meta ni events_wrap
         // (en FBref real scorebox_meta no existe); son complementarios y no bloquean el registro.
+        // El div scorebox ya no es opcional: es la guarda que identifica una página de
+        // partido, por lo que debe seguir presente para que el partido se procese.
         var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 1);
-        driver.ExtraElementsById.Clear();
+        driver.ExtraElementsById.Remove("scorebox_meta");
+        driver.ExtraElementsById.Remove("events_wrap");
         var registry = new FakeMatchLinkRegistry();
         var service = CreateService(driver, out _, out var exporter, registry);
 
         // Act
         ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
 
-        // Assert: las tablas con id sí se exportan; el partido SÍ se registra como procesado.
+        // Assert: las tablas con id, scorebox y field_wrap sí se exportan; el partido SÍ se registra como procesado.
         Assert.True(resultado.Success, string.Join(" | ", resultado.Errors));
         Assert.Empty(resultado.Errors);
-        Assert.Equal(3, exporter.Exports.Count); // las 3 tablas con id del partido
+        Assert.Equal(5, exporter.Exports.Count); // 3 tablas con id + scorebox + field_wrap
         Assert.Equal(1, registry.ProcessedCount);
+    }
+
+    [Fact]
+    public async Task Partidos_NavegacionDesviadaAPaginaAjena_NoExportaYMarcaFallido()
+    {
+        // Arrange: simula el navegador compartido: al abrir la página de un partido
+        // la pestaña termina mostrando una página ajena (p. ej. la de la liga), como
+        // en el incidente real que exportó las tablas de la Premier League a
+        // Detalles_Partidos. Las páginas de equipo no se ven afectadas.
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 2);
+        driver.UrlRewrite = url => url.Contains("/partidos/")
+            ? "https://sitio-de-prueba.test/comps/9/Premier-League-Stats"
+            : url;
+        var registry = new FakeMatchLinkRegistry();
+        var service = CreateService(driver, out _, out var exporter, registry);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
+
+        // Assert: no se exporta NADA (las 13 tablas de la página ajena nunca deben
+        // llegar a Detalles_Partidos); ambos partidos quedan Failed para reintento.
+        Assert.False(resultado.Success);
+        Assert.Empty(exporter.Exports);
+        Assert.Equal(0, exporter.Exports.Count(e => e.PageSegment == "Premier-League-Stats"));
+        Assert.Equal(2, registry.MarkFailedCalls);
+        Assert.Equal(0, registry.ProcessedCount);
+        Assert.Contains(resultado.Errors, e => e.Contains("abandonó la página del partido"));
+    }
+
+    [Fact]
+    public async Task Partidos_PaginaSinScorebox_NoSeExtraeYMarcaFallido()
+    {
+        // Arrange: la página carga tablas con id pero no tiene marcador (scorebox):
+        // no es una página de partido real (p. ej. una redirección del sitio).
+        var driver = CreateDriverForMatches(teams: 1, matchesPerTeam: 1);
+        driver.ScoreboxVisible = false;
+        var registry = new FakeMatchLinkRegistry();
+        var service = CreateService(driver, out _, out var exporter, registry);
+
+        // Act
+        ScrapingResult resultado = await service.ExtractMatchDetailsAsync(OutputDirectory);
+
+        // Assert: no se extrae ninguna tabla; el partido queda Failed (reintento).
+        Assert.False(resultado.Success);
+        Assert.Empty(exporter.Exports);
+        Assert.Equal(1, registry.MarkFailedCalls);
+        Assert.Equal(0, registry.ProcessedCount);
+        Assert.Contains(resultado.Errors, e => e.Contains("no cargó las tablas del partido"));
     }
 
     [Fact]

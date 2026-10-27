@@ -60,6 +60,19 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Estado devuelto por <c>document.readyState</c>.</summary>
     public string ReadyState { get; set; } = "complete";
 
+    /// <summary>
+    /// Transformación opcional aplicada a la URL al navegar con GoToUrl: simula
+    /// que la pestaña compartida termina en otra página (navegación manual del
+    /// usuario o redirección del sitio) sin alterar los enlaces visitados.
+    /// </summary>
+    public Func<string, string>? UrlRewrite { get; set; }
+
+    /// <summary>Indica si el div 'scorebox' está presente (guarda de página de partido).</summary>
+    public bool ScoreboxVisible { get; set; } = true;
+
+    private readonly Stack<string> _history = [];
+    private string _url = "https://sitio-de-prueba.test/liga/primeraliga";
+
     /// <summary>URLs visitadas mediante GoToUrl, en orden.</summary>
     public List<string> VisitedUrls { get; } = [];
 
@@ -72,7 +85,8 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     /// <summary>Indica si se invocó Quit().</summary>
     public bool QuitCalled { get; private set; }
 
-    public string Url { get; set; } = "https://sitio-de-prueba.test/liga/primeraliga";
+    /// <summary>URL actual de la pestaña simulada. GoToUrl la cambia (respetando UrlRewrite) y Back restaura la anterior.</summary>
+    public string Url { get => _url; set => _url = value; }
 
     public string Title => "Liga de Prueba";
 
@@ -196,6 +210,13 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
         {
             string className = by.Criteria["div.".Length..];
 
+            // Guarda de página de partido: el marcador puede "desaparecer" para
+            // simular que la página cargada no corresponde a un partido.
+            if (className == "scorebox" && !ScoreboxVisible)
+            {
+                return [];
+            }
+
             return ExtraElementsById.TryGetValue(className, out var content)
                 ? [new FakeWebElement(
                     $"div {className}",
@@ -236,6 +257,8 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
 
     private void RecordGoToUrl(string url)
     {
+        _history.Push(_url);
+        _url = UrlRewrite?.Invoke(url) ?? url;
         VisitedUrls.Add(url);
         CurrentScrollY = 0; // Una página nueva comienza en la parte superior.
     }
@@ -243,6 +266,11 @@ internal sealed class FakeWebDriver : IWebDriver, IJavaScriptExecutor
     private void OnNavigatedBack()
     {
         NavigationsBack++;
+        if (_history.Count > 0)
+        {
+            _url = _history.Pop();
+        }
+
         CurrentScrollY = 0; // Al volver atrás la página se recarga desde el principio.
     }
 
